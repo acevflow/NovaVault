@@ -12,7 +12,7 @@ However, **NovaVault is currently in early development and should not be conside
 
 If you believe you have found a security vulnerability, please **do not open a public issue**.
 
-Instead, report it privately to the project maintainers so it can be investigated and fixed before the vulnerability is publicly disclosed.
+Instead, use GitHub's **Private Vulnerability Reporting** feature available in this repository.
 
 Please include:
 
