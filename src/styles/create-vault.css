@@ -1,0 +1,223 @@
+.create-vault {
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.create-vault-brand,
+.create-vault-content {
+  width: 50%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.create-vault-header {
+  width: 450px;
+  padding-top: 25px;
+  background-color: #ffffff;
+  border-radius: 25px 25px 0 0;
+  text-align: center;
+  border: 2px solid #000000;
+  border-bottom: none;
+}
+
+.create-vault-header-title {
+  margin: 0;
+  font-size: 32px;
+}
+
+.create-vault-header-subtitle {
+  margin: 0 0 32px 0;
+  font-size: 18px;
+}
+
+.create-vault-form {
+  width: 450px;
+  padding: 0 20px 25px;
+  background-color: #ffffff;
+  border-radius: 0 0 25px 25px;
+  border: 2px solid #000000;
+  border-top: none;
+}
+
+.create-vault-form-field {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.create-vault-form-input {
+  height: 42px;
+  padding: 0 12px;
+  background-color: #f5f5fa;
+  color: #1f2937;
+  border: 1px solid #d9d9e2;
+  border-radius: 10px;
+  font-size: 16px;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.create-vault-form-input::placeholder {
+  color: #9ca3af;
+}
+
+.create-vault-storage-location {
+  display: flex;
+  gap: 8px;
+}
+
+.create-vault-storage-input {
+  flex: 1;
+}
+
+.create-vault-form-input:focus {
+  outline: none;
+  border-color: #0071bc;
+  box-shadow: 0 0 0 2px rgba(0, 113, 188, 0.15);
+}
+
+.create-vault-browse-button {
+  flex: 0 0 80px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid #d9d9e2;
+  background: #f5f5fa;
+  color: #374151;
+  font-size: 16px;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.create-vault-browse-button:hover {
+  background: #e9e9f0;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.create-vault-browse-button:active {
+  background: #dedee6;
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.password-protection {
+  border: none;
+  padding: 0;
+  margin: 0 0 20px;
+}
+
+.create-vault-password-options {
+  display: flex;
+  gap: 20px;
+}
+
+.create-vault-password-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.create-vault-password-radio {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 2px solid #d9d9e2;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.create-vault-password-radio:hover {
+  border-color: #0071bc;
+}
+
+.create-vault-password-radio:checked {
+  border-color: #0071bc;
+  background: #0071bc;
+  box-shadow: inset 0 0 0 4px #ffffff;
+}
+
+.create-vault-password-input {
+  display: flex;
+  gap: 8px;
+}
+
+.create-vault-password-field {
+  flex: 1;
+}
+
+.create-vault-password-toggle {
+  flex: 0 0 45px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: black;
+  font-size: 30px;
+}
+
+.create-vault-primary-button {
+  border: none;
+  background: #0071bc;
+  font-size: 20px;
+  padding: 5px 10px;
+  color: #faf8df;
+  border-radius: 16px;
+  margin: 0 10px;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.create-vault-primary-button:hover {
+  background: #005f9e;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.create-vault-primary-button:active {
+  background: #004f85;
+  transform: translateY(0);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
+}
+
+.create-vault-secondary-button {
+  border: 1px solid #d9d9e2;
+  background: #f5f5fa;
+  font-size: 20px;
+  padding: 5px 10px;
+  color: #374151;
+  border-radius: 16px;
+  margin: 0 10px 0 0;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.create-vault-secondary-button:hover {
+  background: #e9e9f0;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.create-vault-secondary-button:active {
+  background: #dedee6;
+  transform: translateY(0);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
+}

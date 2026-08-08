@@ -2,32 +2,16 @@
   width: 100%;
   height: 100%;
   display: flex;
-  background-color: #f8f8ff;
 }
 
-.welcome-content,
-.welcome-actions {
+.welcome-brand,
+.welcome-content {
   width: 50%;
   height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-}
-
-.welcome-logo {
-  width: 256px;
-  height: 256px;
-}
-
-.welcome-title {
-  margin: 0;
-  font-size: 48px;
-}
-
-.welcome-subtitle {
-  margin: 0;
-  font-size: 18px;
 }
 
 .welcome-primary-button {

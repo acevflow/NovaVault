@@ -1,5 +1,108 @@
+import Brand from "../components/Brand";
+import "../styles/create-vault.css";
+
 function CreateVault() {
-  return <p>Create Vault</p>;
+  return (
+    <main className="create-vault">
+      <section className="create-vault-brand">
+        <Brand />
+      </section>
+      <section className="create-vault-content">
+        <header className="create-vault-header">
+          <h2 className="create-vault-header-title">Create Vault</h2>
+          <p className="create-vault-header-subtitle">
+            Create your private storage locally.
+          </p>
+        </header>
+        <form className="create-vault-form">
+          <div className="create-vault-form-field">
+            <label htmlFor="vault-name">Vault name</label>
+            <input
+              id="vault-name"
+              name="vaultName"
+              className="create-vault-form-input"
+              type="text"
+              placeholder="Personal Vault"
+            />
+          </div>
+          <div className="create-vault-form-field">
+            <label htmlFor="storage-location">Storage location</label>
+            <div className="create-vault-storage-location">
+              <input
+                id="storage-location"
+                name="storageLocation"
+                className="create-vault-form-input create-vault-storage-input"
+                type="text"
+                readOnly
+              />
+              <button className="create-vault-browse-button" type="button">
+                Browse
+              </button>
+            </div>
+          </div>
+          <fieldset className="password-protection">
+            <legend>Protect with a password</legend>
+            <div className="create-vault-password-options">
+              <label>
+                <input
+                  className="create-vault-password-radio"
+                  type="radio"
+                  name="passwordProtection"
+                  value="yes"
+                />
+                Yes
+              </label>
+              <label>
+                <input
+                  className="create-vault-password-radio"
+                  type="radio"
+                  name="passwordProtection"
+                  value="no"
+                />
+                No
+              </label>
+            </div>
+          </fieldset>
+          <div className="create-vault-form-field">
+            <label htmlFor="password">Password</label>
+            <div className="create-vault-password-input">
+              <input
+                id="password"
+                name="password"
+                className="create-vault-form-input create-vault-password-field"
+                type="password"
+              />
+              <button className="create-vault-password-toggle" type="button">
+                👁
+              </button>
+            </div>
+          </div>
+          <div className="create-vault-form-field">
+            <label htmlFor="confirm-password">Confirm password</label>
+            <div className="create-vault-password-input">
+              <input
+                id="confirm-password"
+                name="confirmPassword"
+                className="create-vault-form-input create-vault-password-field"
+                type="password"
+              />
+              <button className="create-vault-password-toggle" type="button">
+                👁
+              </button>
+            </div>
+          </div>
+          <div className="create-vault-actions">
+            <button className="create-vault-secondary-button" type="button">
+              Back
+            </button>
+            <button className="create-vault-primary-button" type="submit">
+              Create Vault
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+  );
 }
 
 export default CreateVault;
