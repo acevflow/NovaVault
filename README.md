@@ -13,29 +13,30 @@
 
 > Your data. Your vault. Your control.
 
-NovaVault is an open-source, privacy-first digital vault designed to keep passwords, files, notes, and other personal data securely stored on your computer.
+NovaVault is an open-source, privacy-first digital vault designed to securely store passwords, files, notes, and other personal data locally on your computer.
 
-The goal is simple: **your data should belong to you.**
-
-NovaVault is designed to work locally, without requiring accounts, cloud storage, or external servers. Data stored in the vault will be encrypted and protected so that only the owner can access it.
+No accounts. No required cloud storage. No external servers. Your data stays under your control.
 
 ## 🚧 Project Status
 
 NovaVault is currently in early development.
 
-The project is being built from the ground up with a focus on:
+Planned features include:
 
-* 🔐 Security and encryption
-* 🖥️ Local-first storage
-* 📁 Easy file organization
-* 🔑 Password management
+* 🔐 Encrypted local vault
+* 🔑 Password manager
+* 📁 Custom folders and organization
+* 📄 Secure file storage
 * 📝 Secure notes
-* 🧩 Clean and maintainable architecture
-* 🤝 Open-source collaboration
+* 🔎 Global search
+* 🔑 Recovery key using an external USB drive
+* 🛡️ Automatic vault locking
+* 💾 Encrypted backups
+* 🤝 Open-source contributions
 
 ## 🛠️ Technology
 
-NovaVault is planned to use:
+NovaVault is built with:
 
 * **Rust** — Core application logic and security
 * **Tauri** — Desktop application framework
@@ -43,24 +44,58 @@ NovaVault is planned to use:
 * **TypeScript** — Frontend development
 * **SQLite** — Local database
 
+## 🚀 Getting Started
+
+### Prerequisites
+
+Make sure you have installed:
+
+* [Node.js](https://nodejs.org/)
+* [Rust](https://www.rust-lang.org/)
+* [Git](https://git-scm.com/)
+
+### Clone the repository
+
+```bash
+git clone https://github.com/acevflow/NovaVault.git
+```
+
+### Enter the project
+
+```bash
+cd NovaVault
+```
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+### Run the application
+
+```bash
+npm run tauri dev
+```
+
+The application should now open in a desktop window.
+
 ## 🤝 Contributing
 
 NovaVault is open source and contributions are welcome.
 
-Whether you want to report a bug, suggest an idea, improve the documentation, or contribute code, feel free to get involved.
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a contribution.
+If you want to contribute, please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting an issue or pull request.
 
 ## 🔒 Security
 
-Security is one of the main priorities of NovaVault.
+Security is one of NovaVault's main priorities.
 
-If you discover a potential security vulnerability, please do not disclose it publicly through an issue. See [SECURITY.md](SECURITY.md) for information about responsible disclosure.
+If you discover a security vulnerability, please use GitHub's private vulnerability reporting instead of opening a public issue.
+
+NovaVault is currently in early development and should **not** be considered production-ready. Do not use it to store critical or irreplaceable data yet.
+
+For more information, see [SECURITY.md](SECURITY.md).
 
 ## 📄 License
 
-NovaVault is open source software licensed under the [MIT License](LICENSE).
-
----
-
-**NovaVault is built to keep your data yours.**
+NovaVault is licensed under the [MIT License](LICENSE).
