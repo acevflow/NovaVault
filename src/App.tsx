@@ -1,7 +1,7 @@
+import Welcome from "./pages/Welcome";
+
 function App() {
-  return (
-    <p>NovaVault</p>
-  );
+  return <Welcome />;
 }
 
-export default App
+export default App;
