@@ -1,4 +1,4 @@
-import "./Welcome.css";
+import "../styles/welcome.css";
 
 import logo from "../assets/images/logo.png";
 
