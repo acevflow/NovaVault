@@ -18,7 +18,7 @@ function Welcome() {
         >
           Create Vault
         </button>
-        <button type="button" className="welcome-secondary-button">
+        <button className="welcome-secondary-button" type="button">
           Already have a Vault?
         </button>
       </section>

@@ -1,7 +1,10 @@
+import { useNavigate } from "react-router-dom";
 import Brand from "../components/Brand";
 import "../styles/create-vault.css";
 
 function CreateVault() {
+  const navigate = useNavigate();
+
   return (
     <main className="create-vault">
       <section className="create-vault-brand">
@@ -92,7 +95,11 @@ function CreateVault() {
             </div>
           </div>
           <div className="create-vault-actions">
-            <button className="create-vault-secondary-button" type="button">
+            <button
+              className="create-vault-secondary-button"
+              type="button"
+              onClick={() => navigate("/")}
+            >
               Back
             </button>
             <button className="create-vault-primary-button" type="submit">
