@@ -2,11 +2,24 @@ import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  validateVaultForm,
+  type VaultFormErrors,
+} from "../utils/vaultValidation";
 import Brand from "../components/Brand";
 import "../styles/create-vault.css";
 
 function CreateVault() {
   const navigate = useNavigate();
+
+  const [vaultName, setVaultName] = useState("");
+  const [storageLocation, setStorageLocation] = useState("");
+  const [passwordProtection, setPasswordProtection] = useState(true);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [errors, setErrors] = useState<VaultFormErrors>({});
 
   const handleBrowse = async () => {
     const selected = await open({
@@ -18,10 +31,24 @@ function CreateVault() {
       setStorageLocation(selected);
     }
   };
-  const [storageLocation, setStorageLocation] = useState("");
-  const [passwordProtection, setPasswordProtection] = useState(true);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const validationErrors = validateVaultForm({
+      vaultName,
+      storageLocation,
+      passwordProtection,
+      password,
+      confirmPassword,
+    });
+
+    setErrors(validationErrors);
+
+    if (Object.keys(validationErrors).length > 0) {
+      return;
+    }
+  };
 
   return (
     <main className="create-vault">
@@ -35,7 +62,7 @@ function CreateVault() {
             Create your private storage locally.
           </p>
         </header>
-        <form className="create-vault-form">
+        <form className="create-vault-form" onSubmit={handleSubmit}>
           <div className="create-vault-form-field">
             <label htmlFor="vault-name">Vault name</label>
             <input
@@ -44,7 +71,12 @@ function CreateVault() {
               className="create-vault-form-input"
               type="text"
               placeholder="Personal Vault"
+              value={vaultName}
+              onChange={(event) => setVaultName(event.target.value)}
             />
+            {errors.vaultName && (
+              <p className="create-vault-form-error">{errors.vaultName}</p>
+            )}
           </div>
           <div className="create-vault-form-field">
             <label htmlFor="storage-location">Storage location</label>
@@ -65,6 +97,11 @@ function CreateVault() {
                 Browse
               </button>
             </div>
+            {errors.storageLocation && (
+              <p className="create-vault-form-error">
+                {errors.storageLocation}
+              </p>
+            )}
           </div>
           <fieldset className="password-protection">
             <legend>Protect with a password</legend>
@@ -103,6 +140,8 @@ function CreateVault() {
                     name="password"
                     className="create-vault-form-input create-vault-password-field"
                     type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
                   />
                   <button
                     className="create-vault-password-toggle"
@@ -116,6 +155,9 @@ function CreateVault() {
                     )}
                   </button>
                 </div>
+                {errors.password && (
+                  <p className="create-vault-form-error">{errors.password}</p>
+                )}
               </div>
               <div className="create-vault-form-field">
                 <label htmlFor="confirm-password">Confirm password</label>
@@ -125,6 +167,8 @@ function CreateVault() {
                     name="confirmPassword"
                     className="create-vault-form-input create-vault-password-field"
                     type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
                   />
                   <button
                     className="create-vault-password-toggle"
@@ -138,6 +182,11 @@ function CreateVault() {
                     )}
                   </button>
                 </div>
+                {errors.confirmPassword && (
+                  <p className="create-vault-form-error">
+                    {errors.confirmPassword}
+                  </p>
+                )}
               </div>
             </>
           )}
