@@ -7,6 +7,7 @@ import "../styles/create-vault.css";
 function CreateVault() {
   const navigate = useNavigate();
 
+  const [passwordProtection, setPasswordProtection] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -57,6 +58,8 @@ function CreateVault() {
                   type="radio"
                   name="passwordProtection"
                   value="yes"
+                  checked={passwordProtection}
+                  onChange={() => setPasswordProtection(true)}
                 />
                 Yes
               </label>
@@ -66,55 +69,61 @@ function CreateVault() {
                   type="radio"
                   name="passwordProtection"
                   value="no"
+                  checked={!passwordProtection}
+                  onChange={() => setPasswordProtection(false)}
                 />
                 No
               </label>
             </div>
           </fieldset>
-          <div className="create-vault-form-field">
-            <label htmlFor="password">Password</label>
-            <div className="create-vault-password-input">
-              <input
-                id="password"
-                name="password"
-                className="create-vault-form-input create-vault-password-field"
-                type={showPassword ? "text" : "password"}
-              />
-              <button
-                className="create-vault-password-toggle"
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? (
-                  <EyeOff className="create-vault-password-icon" />
-                ) : (
-                  <Eye className="create-vault-password-icon" />
-                )}
-              </button>
-            </div>
-          </div>
-          <div className="create-vault-form-field">
-            <label htmlFor="confirm-password">Confirm password</label>
-            <div className="create-vault-password-input">
-              <input
-                id="confirm-password"
-                name="confirmPassword"
-                className="create-vault-form-input create-vault-password-field"
-                type={showConfirmPassword ? "text" : "password"}
-              />
-              <button
-                className="create-vault-password-toggle"
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              >
-                {showConfirmPassword ? (
-                  <EyeOff className="create-vault-password-icon" />
-                ) : (
-                  <Eye className="create-vault-password-icon" />
-                )}
-              </button>
-            </div>
-          </div>
+          {passwordProtection && (
+            <>
+              <div className="create-vault-form-field">
+                <label htmlFor="password">Password</label>
+                <div className="create-vault-password-input">
+                  <input
+                    id="password"
+                    name="password"
+                    className="create-vault-form-input create-vault-password-field"
+                    type={showPassword ? "text" : "password"}
+                  />
+                  <button
+                    className="create-vault-password-toggle"
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="create-vault-password-icon" />
+                    ) : (
+                      <Eye className="create-vault-password-icon" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div className="create-vault-form-field">
+                <label htmlFor="confirm-password">Confirm password</label>
+                <div className="create-vault-password-input">
+                  <input
+                    id="confirm-password"
+                    name="confirmPassword"
+                    className="create-vault-form-input create-vault-password-field"
+                    type={showConfirmPassword ? "text" : "password"}
+                  />
+                  <button
+                    className="create-vault-password-toggle"
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="create-vault-password-icon" />
+                    ) : (
+                      <Eye className="create-vault-password-icon" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
           <div className="create-vault-actions">
             <button
               className="create-vault-secondary-button"
