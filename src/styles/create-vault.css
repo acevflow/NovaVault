@@ -164,8 +164,19 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  color: black;
-  font-size: 30px;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.create-vault-password-toggle:focus {
+  outline: none;
+}
+
+.create-vault-password-icon {
+  width: 22px;
+  height: 22px;
 }
 
 .create-vault-primary-button {

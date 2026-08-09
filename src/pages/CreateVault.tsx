@@ -1,9 +1,14 @@
+import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Brand from "../components/Brand";
 import "../styles/create-vault.css";
 
 function CreateVault() {
   const navigate = useNavigate();
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   return (
     <main className="create-vault">
@@ -73,10 +78,18 @@ function CreateVault() {
                 id="password"
                 name="password"
                 className="create-vault-form-input create-vault-password-field"
-                type="password"
+                type={showPassword ? "text" : "password"}
               />
-              <button className="create-vault-password-toggle" type="button">
-                👁
+              <button
+                className="create-vault-password-toggle"
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? (
+                  <EyeOff className="create-vault-password-icon" />
+                ) : (
+                  <Eye className="create-vault-password-icon" />
+                )}
               </button>
             </div>
           </div>
@@ -87,10 +100,18 @@ function CreateVault() {
                 id="confirm-password"
                 name="confirmPassword"
                 className="create-vault-form-input create-vault-password-field"
-                type="password"
+                type={showConfirmPassword ? "text" : "password"}
               />
-              <button className="create-vault-password-toggle" type="button">
-                👁
+              <button
+                className="create-vault-password-toggle"
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                {showConfirmPassword ? (
+                  <EyeOff className="create-vault-password-icon" />
+                ) : (
+                  <Eye className="create-vault-password-icon" />
+                )}
               </button>
             </div>
           </div>
