@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -20,6 +20,8 @@ function CreateVault() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<VaultFormErrors>({});
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const firstError = Object.values(errors)[0];
 
   const handleBrowse = async () => {
     const selected = await open({
@@ -32,8 +34,43 @@ function CreateVault() {
     }
   };
 
+  const validationErrors = validateVaultForm({
+    vaultName,
+    storageLocation,
+    passwordProtection,
+    password,
+    confirmPassword,
+  });
+
+  const isFormValid = Object.keys(validationErrors).length === 0;
+
+  useEffect(() => {
+    if (!hasSubmitted) {
+      return;
+    }
+
+    const validationErrors = validateVaultForm({
+      vaultName,
+      storageLocation,
+      passwordProtection,
+      password,
+      confirmPassword,
+    });
+
+    setErrors(validationErrors);
+  }, [
+    vaultName,
+    storageLocation,
+    passwordProtection,
+    password,
+    confirmPassword,
+    hasSubmitted,
+  ]);
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    setHasSubmitted(true);
 
     const validationErrors = validateVaultForm({
       vaultName,
@@ -68,15 +105,16 @@ function CreateVault() {
             <input
               id="vault-name"
               name="vaultName"
-              className="create-vault-form-input"
+              className={`create-vault-form-input ${
+                firstError && firstError === errors.vaultName
+                  ? "create-vault-form-input-error"
+                  : ""
+              }`}
               type="text"
               placeholder="Personal Vault"
               value={vaultName}
               onChange={(event) => setVaultName(event.target.value)}
             />
-            {errors.vaultName && (
-              <p className="create-vault-form-error">{errors.vaultName}</p>
-            )}
           </div>
           <div className="create-vault-form-field">
             <label htmlFor="storage-location">Storage location</label>
@@ -84,7 +122,11 @@ function CreateVault() {
               <input
                 id="storage-location"
                 name="storageLocation"
-                className="create-vault-form-input create-vault-storage-input"
+                className={`create-vault-form-input create-vault-storage-input ${
+                  firstError && firstError === errors.storageLocation
+                    ? "create-vault-form-input-error"
+                    : ""
+                }`}
                 type="text"
                 value={storageLocation}
                 readOnly
@@ -97,11 +139,6 @@ function CreateVault() {
                 Browse
               </button>
             </div>
-            {errors.storageLocation && (
-              <p className="create-vault-form-error">
-                {errors.storageLocation}
-              </p>
-            )}
           </div>
           <fieldset className="password-protection">
             <legend>Protect with a password</legend>
@@ -138,7 +175,11 @@ function CreateVault() {
                   <input
                     id="password"
                     name="password"
-                    className="create-vault-form-input create-vault-password-field"
+                    className={`create-vault-form-input create-vault-password-field ${
+                      firstError && firstError === errors.password
+                        ? "create-vault-form-input-error"
+                        : ""
+                    }`}
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
@@ -155,9 +196,6 @@ function CreateVault() {
                     )}
                   </button>
                 </div>
-                {errors.password && (
-                  <p className="create-vault-form-error">{errors.password}</p>
-                )}
               </div>
               <div className="create-vault-form-field">
                 <label htmlFor="confirm-password">Confirm password</label>
@@ -165,7 +203,11 @@ function CreateVault() {
                   <input
                     id="confirm-password"
                     name="confirmPassword"
-                    className="create-vault-form-input create-vault-password-field"
+                    className={`create-vault-form-input create-vault-password-field ${
+                      firstError && firstError === errors.confirmPassword
+                        ? "create-vault-form-input-error"
+                        : ""
+                    }`}
                     type={showConfirmPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(event) => setConfirmPassword(event.target.value)}
@@ -182,13 +224,11 @@ function CreateVault() {
                     )}
                   </button>
                 </div>
-                {errors.confirmPassword && (
-                  <p className="create-vault-form-error">
-                    {errors.confirmPassword}
-                  </p>
-                )}
               </div>
             </>
+          )}
+          {firstError && (
+            <p className="create-vault-form-error">{firstError}</p>
           )}
           <div className="create-vault-actions">
             <button
@@ -198,7 +238,14 @@ function CreateVault() {
             >
               Back
             </button>
-            <button className="create-vault-primary-button" type="submit">
+            <button
+              className={
+                isFormValid
+                  ? "create-vault-primary-button"
+                  : "create-vault-primary-button create-vault-primary-button-incomplete"
+              }
+              type="submit"
+            >
               Create Vault
             </button>
           </div>
