@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Eye, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Brand from "../components/Brand";
@@ -7,6 +8,17 @@ import "../styles/create-vault.css";
 function CreateVault() {
   const navigate = useNavigate();
 
+  const handleBrowse = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+    });
+
+    if (selected) {
+      setStorageLocation(selected);
+    }
+  };
+  const [storageLocation, setStorageLocation] = useState("");
   const [passwordProtection, setPasswordProtection] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -42,9 +54,14 @@ function CreateVault() {
                 name="storageLocation"
                 className="create-vault-form-input create-vault-storage-input"
                 type="text"
+                value={storageLocation}
                 readOnly
               />
-              <button className="create-vault-browse-button" type="button">
+              <button
+                className="create-vault-browse-button"
+                type="button"
+                onClick={handleBrowse}
+              >
                 Browse
               </button>
             </div>
