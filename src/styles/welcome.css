@@ -20,8 +20,8 @@
   margin: 10px;
   border: none;
   border-radius: 16px;
-  background-color: #0071bc;
-  color: #faf8df;
+  background-color: var(--color-accent);
+  color: var(--color-text-on-accent);
   font-size: 20px;
   font-weight: 600;
   cursor: pointer;
@@ -46,7 +46,7 @@
   margin: 10px;
   border: none;
   background-color: transparent;
-  color: #005eff;
+  color: var(--color-link);
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
