@@ -8,7 +8,6 @@ import {
   type VaultFormErrors,
 } from "../utils/vaultValidation";
 import Brand from "../components/Brand";
-import "../styles/create-vault.css";
 
 function CreateVault() {
   const navigate = useNavigate();
@@ -109,170 +108,189 @@ function CreateVault() {
   };
 
   return (
-    <main className="create-vault">
-      <section className="create-vault-brand">
+    <main className="flex min-h-screen w-full flex-col bg-[var(--color-background)] lg:flex-row">
+      <section className="flex flex-1 items-center justify-center p-8">
         <Brand />
       </section>
-      <section className="create-vault-content">
-        <header className="create-vault-header">
-          <h2 className="create-vault-header-title">Create Vault</h2>
-          <p className="create-vault-header-subtitle">
-            Create your private storage locally.
-          </p>
-        </header>
-        <form className="create-vault-form" onSubmit={handleSubmit}>
-          <div className="create-vault-form-field">
-            <label htmlFor="vault-name">Vault name</label>
-            <input
-              id="vault-name"
-              name="vaultName"
-              className={`create-vault-form-input ${
-                firstError && firstError === errors.vaultName
-                  ? "create-vault-form-input-error"
-                  : ""
-              }`}
-              type="text"
-              placeholder="Personal Vault"
-              value={vaultName}
-              onChange={(event) => setVaultName(event.target.value)}
-            />
-          </div>
-          <div className="create-vault-form-field">
-            <label htmlFor="storage-location">Storage location</label>
-            <div className="create-vault-storage-location">
+      <section className="flex flex-1 items-center justify-center p-6 sm:p-8">
+        <div className="w-full max-w-[450px]">
+          <header className="rounded-t-[25px] border border-b-0 border-[color:var(--color-border-strong)] bg-[var(--color-surface)] px-6 pt-6 text-center">
+            <h2 className="m-0 text-[32px] font-semibold text-[var(--color-text-primary)]">
+              Create Vault
+            </h2>
+            <p className="mb-0 mt-2 text-[18px] text-[var(--color-text-secondary)]">
+              Create your private storage locally.
+            </p>
+          </header>
+          <form
+            className="rounded-b-[25px] border border-t-0 border-[color:var(--color-border-strong)] bg-[var(--color-surface)] px-5 pb-6 pt-4"
+            onSubmit={handleSubmit}
+          >
+            <div className="mb-5 flex flex-col gap-2">
+              <label className="text-[16px] text-[var(--color-text-secondary)]" htmlFor="vault-name">
+                Vault name
+              </label>
               <input
-                id="storage-location"
-                name="storageLocation"
-                className={`create-vault-form-input create-vault-storage-input ${
-                  firstError &&
-                  (firstError === errors.storageLocation ||
-                    firstError === storageError)
-                    ? "create-vault-form-input-error"
-                    : ""
+                id="vault-name"
+                name="vaultName"
+                className={`h-[42px] rounded-[10px] border px-3 text-[16px] outline-none transition ${
+                  firstError && firstError === errors.vaultName
+                    ? "border-[color:var(--color-danger)] shadow-[0_0_0_2px_rgba(225,29,72,0.15)]"
+                    : "border-[color:var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-primary)] focus:border-[color:var(--color-accent)] focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)]"
                 }`}
                 type="text"
-                value={storageLocation}
-                readOnly
+                placeholder="Personal Vault"
+                value={vaultName}
+                onChange={(event) => setVaultName(event.target.value)}
               />
+            </div>
+            <div className="mb-5 flex flex-col gap-2">
+              <label className="text-[16px] text-[var(--color-text-secondary)]" htmlFor="storage-location">
+                Storage location
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="storage-location"
+                  name="storageLocation"
+                  className={`h-[42px] flex-1 rounded-[10px] border px-3 text-[16px] outline-none transition ${
+                    firstError &&
+                    (firstError === errors.storageLocation ||
+                      firstError === storageError)
+                      ? "border-[color:var(--color-danger)] shadow-[0_0_0_2px_rgba(225,29,72,0.15)]"
+                      : "border-[color:var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-primary)] focus:border-[color:var(--color-accent)] focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)]"
+                  }`}
+                  type="text"
+                  value={storageLocation}
+                  readOnly
+                />
+                <button
+                  className="h-[42px] min-w-[80px] rounded-[10px] border border-[color:var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-[16px] text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-hover)] active:bg-[var(--color-surface-active)]"
+                  type="button"
+                  onClick={handleBrowse}
+                >
+                  Browse
+                </button>
+              </div>
+            </div>
+            <fieldset className="mb-5 border-0 p-0">
+              <legend className="mb-2 text-[16px] text-[var(--color-text-secondary)]">
+                Protect with a password
+              </legend>
+              <div className="flex gap-5">
+                <label className="flex cursor-pointer items-center gap-2 text-[var(--color-text-secondary)]">
+                  <input
+                    className="h-[18px] w-[18px] cursor-pointer appearance-none rounded-full border-2 border-[color:var(--color-border)] transition checked:border-[color:var(--color-accent)] checked:bg-[var(--color-accent)] checked:shadow-[inset_0_0_0_4px_white]"
+                    type="radio"
+                    name="passwordProtection"
+                    value="yes"
+                    checked={passwordProtection}
+                    onChange={() => setPasswordProtection(true)}
+                  />
+                  Yes
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-[var(--color-text-secondary)]">
+                  <input
+                    className="h-[18px] w-[18px] cursor-pointer appearance-none rounded-full border-2 border-[color:var(--color-border)] transition checked:border-[color:var(--color-accent)] checked:bg-[var(--color-accent)] checked:shadow-[inset_0_0_0_4px_white]"
+                    type="radio"
+                    name="passwordProtection"
+                    value="no"
+                    checked={!passwordProtection}
+                    onChange={() => setPasswordProtection(false)}
+                  />
+                  No
+                </label>
+              </div>
+            </fieldset>
+            {passwordProtection && (
+              <>
+                <div className="mb-5 flex flex-col gap-2">
+                  <label className="text-[16px] text-[var(--color-text-secondary)]" htmlFor="password">
+                    Password
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="password"
+                      name="password"
+                      className={`h-[42px] flex-1 rounded-[10px] border px-3 text-[16px] outline-none transition ${
+                        firstError && firstError === errors.password
+                          ? "border-[color:var(--color-danger)] shadow-[0_0_0_2px_rgba(225,29,72,0.15)]"
+                          : "border-[color:var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-primary)] focus:border-[color:var(--color-accent)] focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)]"
+                      }`}
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                    />
+                    <button
+                      className="flex h-[42px] w-[45px] items-center justify-center rounded-[10px] bg-transparent text-[var(--color-text-secondary)]"
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-[22px] w-[22px]" />
+                      ) : (
+                        <Eye className="h-[22px] w-[22px]" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="mb-5 flex flex-col gap-2">
+                  <label className="text-[16px] text-[var(--color-text-secondary)]" htmlFor="confirm-password">
+                    Confirm password
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="confirm-password"
+                      name="confirmPassword"
+                      className={`h-[42px] flex-1 rounded-[10px] border px-3 text-[16px] outline-none transition ${
+                        firstError && firstError === errors.confirmPassword
+                          ? "border-[color:var(--color-danger)] shadow-[0_0_0_2px_rgba(225,29,72,0.15)]"
+                          : "border-[color:var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-primary)] focus:border-[color:var(--color-accent)] focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)]"
+                      }`}
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                    />
+                    <button
+                      className="flex h-[42px] w-[45px] items-center justify-center rounded-[10px] bg-transparent text-[var(--color-text-secondary)]"
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-[22px] w-[22px]" />
+                      ) : (
+                        <Eye className="h-[22px] w-[22px]" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+            {firstError && (
+              <p className="mb-4 text-[14px] leading-[1.4] text-[var(--color-danger)]">
+                {firstError}
+              </p>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
               <button
-                className="create-vault-browse-button"
+                className="rounded-[16px] border border-[color:var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-[20px] text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-hover)] active:bg-[var(--color-surface-active)]"
                 type="button"
-                onClick={handleBrowse}
+                onClick={() => navigate("/")}
               >
-                Browse
+                Back
+              </button>
+              <button
+                className={`rounded-[16px] px-3 py-1 text-[20px] text-[var(--color-text-on-accent)] transition ${
+                  isFormValid
+                    ? "bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)]"
+                    : "bg-[var(--color-accent-soft)] text-[var(--color-text-inverted)] hover:bg-[var(--color-accent-soft-hover)]"
+                }`}
+                type="submit"
+              >
+                Create Vault
               </button>
             </div>
-          </div>
-          <fieldset className="password-protection">
-            <legend>Protect with a password</legend>
-            <div className="create-vault-password-options">
-              <label>
-                <input
-                  className="create-vault-password-radio"
-                  type="radio"
-                  name="passwordProtection"
-                  value="yes"
-                  checked={passwordProtection}
-                  onChange={() => setPasswordProtection(true)}
-                />
-                Yes
-              </label>
-              <label>
-                <input
-                  className="create-vault-password-radio"
-                  type="radio"
-                  name="passwordProtection"
-                  value="no"
-                  checked={!passwordProtection}
-                  onChange={() => setPasswordProtection(false)}
-                />
-                No
-              </label>
-            </div>
-          </fieldset>
-          {passwordProtection && (
-            <>
-              <div className="create-vault-form-field">
-                <label htmlFor="password">Password</label>
-                <div className="create-vault-password-input">
-                  <input
-                    id="password"
-                    name="password"
-                    className={`create-vault-form-input create-vault-password-field ${
-                      firstError && firstError === errors.password
-                        ? "create-vault-form-input-error"
-                        : ""
-                    }`}
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                  <button
-                    className="create-vault-password-toggle"
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="create-vault-password-icon" />
-                    ) : (
-                      <Eye className="create-vault-password-icon" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="create-vault-form-field">
-                <label htmlFor="confirm-password">Confirm password</label>
-                <div className="create-vault-password-input">
-                  <input
-                    id="confirm-password"
-                    name="confirmPassword"
-                    className={`create-vault-form-input create-vault-password-field ${
-                      firstError && firstError === errors.confirmPassword
-                        ? "create-vault-form-input-error"
-                        : ""
-                    }`}
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                  />
-                  <button
-                    className="create-vault-password-toggle"
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="create-vault-password-icon" />
-                    ) : (
-                      <Eye className="create-vault-password-icon" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-          {firstError && (
-            <p className="create-vault-form-error">{firstError}</p>
-          )}
-          <div className="create-vault-actions">
-            <button
-              className="create-vault-secondary-button"
-              type="button"
-              onClick={() => navigate("/")}
-            >
-              Back
-            </button>
-            <button
-              className={
-                isFormValid
-                  ? "create-vault-primary-button"
-                  : "create-vault-primary-button create-vault-primary-button-incomplete"
-              }
-              type="submit"
-            >
-              Create Vault
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </section>
     </main>
   );
