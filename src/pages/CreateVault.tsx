@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Eye, EyeOff } from "lucide-react";
@@ -19,9 +20,16 @@ function CreateVault() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [storageError, setStorageError] = useState("");
   const [errors, setErrors] = useState<VaultFormErrors>({});
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const firstError = Object.values(errors)[0];
+  const firstError = hasSubmitted
+    ? (errors.vaultName ??
+      errors.storageLocation ??
+      storageError ??
+      errors.password ??
+      errors.confirmPassword)
+    : undefined;
 
   const handleBrowse = async () => {
     const selected = await open({
@@ -29,8 +37,20 @@ function CreateVault() {
       multiple: false,
     });
 
-    if (selected) {
-      setStorageLocation(selected);
+    if (!selected) {
+      return;
+    }
+
+    setStorageLocation(selected);
+
+    try {
+      await invoke("validate_storage_location", {
+        storageLocation: selected,
+      });
+
+      setStorageError("");
+    } catch (error) {
+      setStorageError(String(error));
     }
   };
 
@@ -42,7 +62,8 @@ function CreateVault() {
     confirmPassword,
   });
 
-  const isFormValid = Object.keys(validationErrors).length === 0;
+  const isFormValid =
+    Object.keys(validationErrors).length === 0 && !storageError;
 
   useEffect(() => {
     if (!hasSubmitted) {
@@ -82,7 +103,7 @@ function CreateVault() {
 
     setErrors(validationErrors);
 
-    if (Object.keys(validationErrors).length > 0) {
+    if (Object.keys(validationErrors).length > 0 || storageError) {
       return;
     }
   };
@@ -123,7 +144,9 @@ function CreateVault() {
                 id="storage-location"
                 name="storageLocation"
                 className={`create-vault-form-input create-vault-storage-input ${
-                  firstError && firstError === errors.storageLocation
+                  firstError &&
+                  (firstError === errors.storageLocation ||
+                    firstError === storageError)
                     ? "create-vault-form-input-error"
                     : ""
                 }`}
