@@ -303,7 +303,7 @@ function CreateVault() {
               <button
                 className="rounded-2xl border border-(--color-border) bg-(--color-surface-muted) px-3 py-1 text-[20px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active)"
                 type="button"
-                onClick={() => navigate("/")}
+                onClick={() => navigate("/get-started")}
               >
                 Back
               </button>

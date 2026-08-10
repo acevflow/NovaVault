@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Brand from "../components/Brand";
 
@@ -12,10 +13,11 @@ function Welcome() {
       <section className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
         <button
           type="button"
-          className="h-12.5 w-50 rounded-2xl bg-(--color-accent) px-4 text-[20px] font-semibold text-(--color-text-on-accent) transition hover:-translate-y-1 hover:shadow-[0_4px_6px_rgba(0,0,0,0.1)] active:translate-y-0 active:shadow-[0_2px_3px_rgba(0,0,0,0.1)]"
-          onClick={() => navigate("/create-vault")}
+          className="flex h-12.5 w-50 items-center justify-center gap-2 rounded-2xl bg-(--color-accent) px-4 text-[20px] font-semibold text-(--color-text-on-accent) transition hover:-translate-y-1 hover:shadow-[0_4px_6px_rgba(0,0,0,0.1)] active:translate-y-0 active:shadow-[0_2px_3px_rgba(0,0,0,0.1)]"
+          onClick={() => navigate("/get-started")}
         >
-          Create Vault
+          Get Started
+          <ArrowRight className="h-5 w-5" />
         </button>
         <button
           className="w-50 bg-transparent text-[16px] font-medium text-(--color-link) transition hover:opacity-70 active:opacity-50"
