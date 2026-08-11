@@ -1,11 +1,45 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Brand from "../components/Brand";
 
 function Welcome() {
   const navigate = useNavigate();
+
+  const [checkingVault, setCheckingVault] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkOpenVault = async () => {
+      try {
+        const openVault = await invoke<string | null>("get_open_vault");
+
+        if (cancelled) {
+          return;
+        }
+
+        if (openVault) {
+          navigate("/vault", { replace: true });
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to check for an open Vault:", error);
+      }
+
+      if (!cancelled) {
+        setCheckingVault(false);
+      }
+    };
+
+    checkOpenVault();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   const handleOpenVault = async () => {
     const selected = await open({
@@ -27,6 +61,20 @@ function Welcome() {
       console.error("Failed to open Vault:", error);
     }
   };
+
+  if (checkingVault) {
+    return (
+      <main className="flex min-h-screen w-full items-center justify-center bg-(--color-background)">
+        <div
+          className="text-[15px] text-(--color-text-secondary)"
+          role="status"
+          aria-live="polite"
+        >
+          Checking for your Vault...
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen w-full flex-row bg-(--color-background)">
