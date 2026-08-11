@@ -8,8 +8,11 @@ import {
   type VaultFormErrors,
 } from "../utils/vaultValidation";
 import Brand from "../components/Brand";
+import ErrorPopup from "../components/ErrorPopup";
 
 function CreateVault() {
+  const [error, setError] = useState<string | null>(null);
+
   const navigate = useNavigate();
 
   const [vaultName, setVaultName] = useState("");
@@ -107,21 +110,24 @@ function CreateVault() {
     }
 
     try {
-      const vaultPath = await invoke("create_vault", {
+      await invoke("create_vault", {
         vaultName,
         storageLocation,
       });
 
-      console.log("Vault created:", vaultPath);
-
       navigate("/vault");
     } catch (error) {
-      console.error(error);
+      setError(String(error));
     }
   };
 
   return (
     <main className="flex min-h-screen w-full flex-row bg-(--color-background)">
+      <ErrorPopup
+        open={error !== null}
+        message={error ?? ""}
+        onClose={() => setError(null)}
+      />
       <section className="flex flex-1 items-center justify-center p-6">
         <div className="nv-page-enter nv-stagger-1">
           <Brand />

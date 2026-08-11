@@ -5,8 +5,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Brand from "../components/Brand";
 import CheckingVault from "../components/CheckingVault";
+import ErrorPopup from "../components/ErrorPopup";
 
 function Welcome() {
+  const [error, setError] = useState<string | null>(null);
+
   const navigate = useNavigate();
 
   const [checkingVault, setCheckingVault] = useState(true);
@@ -27,7 +30,7 @@ function Welcome() {
           return;
         }
       } catch (error) {
-        console.error("Failed to check for an open Vault:", error);
+        setError(String(error));
       }
 
       if (!cancelled) {
@@ -59,7 +62,7 @@ function Welcome() {
 
       navigate("/vault");
     } catch (error) {
-      console.error("Failed to open Vault:", error);
+      setError(String(Error));
     }
   };
 
@@ -69,6 +72,11 @@ function Welcome() {
 
   return (
     <main className="flex min-h-screen w-full flex-row bg-(--color-background)">
+      <ErrorPopup
+        open={error !== null}
+        message={error ?? ""}
+        onClose={() => setError(null)}
+      />
       <section className="nv-page-enter flex min-w-0 flex-1 items-center justify-center p-8 max-[1100px]:p-5">
         <Brand />
       </section>

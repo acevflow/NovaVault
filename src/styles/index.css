@@ -42,6 +42,50 @@ body {
   }
 }
 
+@keyframes nv-error-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nv-error-overlay-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes nv-error-popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes nv-error-popup-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
 .nv-page-enter {
   animation: nv-page-enter 400ms ease-out both;
 }
@@ -64,6 +108,22 @@ body {
 
 .nv-stagger-4 {
   animation-delay: 325ms;
+}
+
+.nv-error-overlay-in {
+  animation: nv-error-overlay-in 180ms ease-out forwards;
+}
+
+.nv-error-overlay-out {
+  animation: nv-error-overlay-out 180ms ease-in forwards;
+}
+
+.nv-error-popup-in {
+  animation: nv-error-popup-in 180ms ease-out forwards;
+}
+
+.nv-error-popup-out {
+  animation: nv-error-popup-out 180ms ease-in forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
