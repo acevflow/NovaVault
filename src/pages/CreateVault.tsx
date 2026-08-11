@@ -121,30 +121,30 @@ function CreateVault() {
   };
 
   return (
-    <main className="flex min-h-screen w-full flex-col bg-(--color-background) lg:flex-row">
-      <section className="flex flex-1 items-center justify-center p-8">
+    <main className="flex min-h-screen w-full flex-row bg-(--color-background)">
+      <section className="flex flex-1 items-center justify-center p-6">
         <div className="nv-page-enter nv-stagger-1">
           <Brand />
         </div>
       </section>
-      <section className="flex flex-1 items-center justify-center p-6 sm:p-8">
-        <div className="nv-page-enter nv-stagger-2 w-full max-w-112.5 [animation-delay:100ms]">
-          <div className="w-full max-w-112.5 animate-page-enter">
-            <header className="rounded-t-[25px] border border-b-0 border-(--color-border-strong) bg-(--color-surface) px-6 pt-6 text-center">
-              <h2 className="m-0 text-[32px] font-semibold text-(--color-text-primary)">
+      <section className="flex flex-1 items-center justify-center p-5">
+        <div className="nv-page-enter nv-stagger-2 w-full max-w-100 xl:max-w-112.5 2xl:max-w-125 [animation-delay:100ms]">
+          <div className="w-full animate-page-enter">
+            <header className="rounded-t-[22px] border border-b-0 border-(--color-border-strong) bg-(--color-surface) px-5 pt-5 text-center xl:px-6 xl:pt-6">
+              <h2 className="m-0 text-[28px] font-semibold text-(--color-text-primary) xl:text-[30px] 2xl:text-[32px]">
                 Create Vault
               </h2>
-              <p className="mb-0 mt-2 text-[18px] text-(--color-text-secondary)">
+              <p className="mb-0 mt-1.5 text-[16px] text-(--color-text-secondary) xl:text-[17px] 2xl:text-[18px]">
                 Create your private storage locally.
               </p>
             </header>
             <form
-              className="rounded-b-[25px] border border-t-0 border-(--color-border-strong) bg-(--color-surface) px-5 pb-6 pt-4"
+              className="rounded-b-[22px] border border-t-0 border-(--color-border-strong) bg-(--color-surface) px-4 pb-5 pt-3.5 xl:px-5 xl:pb-6 xl:pt-4"
               onSubmit={handleSubmit}
             >
-              <div className="mb-5 flex flex-col gap-2">
+              <div className="mb-4 flex flex-col gap-1.5">
                 <label
-                  className="text-[16px] text-(--color-text-secondary)"
+                  className="text-[15px] text-(--color-text-secondary)"
                   htmlFor="vault-name"
                 >
                   Vault name
@@ -152,7 +152,7 @@ function CreateVault() {
                 <input
                   id="vault-name"
                   name="vaultName"
-                  className={`h-10.5 rounded-[10px] border px-3 text-[16px] outline-none transition ${
+                  className={`h-10 rounded-[9px] border px-3 text-[15px] outline-none transition ${
                     firstError && firstError === errors.vaultName
                       ? "border-(--color-danger) shadow-[0_0_0_2px_rgba(225,29,72,0.15)]"
                       : "border-(--color-border) bg-(--color-surface-muted) text-(--color-text-primary) focus:border-(--color-accent) focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)]"
@@ -163,9 +163,9 @@ function CreateVault() {
                   onChange={(event) => setVaultName(event.target.value)}
                 />
               </div>
-              <div className="mb-5 flex flex-col gap-2">
+              <div className="mb-4 flex flex-col gap-1.5">
                 <label
-                  className="text-[16px] text-(--color-text-secondary)"
+                  className="text-[15px] text-(--color-text-secondary)"
                   htmlFor="storage-location"
                 >
                   Storage location
@@ -174,7 +174,7 @@ function CreateVault() {
                   <input
                     id="storage-location"
                     name="storageLocation"
-                    className={`h-10.5 flex-1 rounded-[10px] border px-3 text-[16px] outline-none transition ${
+                    className={`h-10 flex-1 rounded-[9px] border px-3 text-[15px] outline-none transition ${
                       firstError &&
                       (firstError === errors.storageLocation ||
                         firstError === storageError)
@@ -186,7 +186,7 @@ function CreateVault() {
                     readOnly
                   />
                   <button
-                    className="h-10.5 min-w-20 rounded-[10px] border border-(--color-border) bg-(--color-surface-muted) px-3 text-[16px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active)"
+                    className="h-10 min-w-18 rounded-[9px] border border-(--color-border) bg-(--color-surface-muted) px-3 text-[15px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active)"
                     type="button"
                     onClick={handleBrowse}
                   >
@@ -194,14 +194,14 @@ function CreateVault() {
                   </button>
                 </div>
               </div>
-              <fieldset className="mb-5 border-0 p-0">
-                <legend className="mb-2 text-[16px] text-(--color-text-secondary)">
+              <fieldset className="mb-4 border-0 p-0">
+                <legend className="mb-1.5 text-[15px] text-(--color-text-secondary)">
                   Protect with a password
                 </legend>
                 <div className="flex gap-5">
-                  <label className="flex cursor-pointer items-center gap-2 text-(--color-text-secondary)">
+                  <label className="flex cursor-pointer items-center gap-2 text-[15px] text-(--color-text-secondary)">
                     <input
-                      className="h-4.5 w-4.5 cursor-pointer appearance-none rounded-full border-2 border-(--color-border) transition checked:border-(--color-accent) checked:bg-(--color-accent) checked:shadow-[inset_0_0_0_4px_white]"
+                      className="h-4 w-4 cursor-pointer appearance-none rounded-full border-2 border-(--color-border) transition checked:border-(--color-accent) checked:bg-(--color-accent) checked:shadow-[inset_0_0_0_3px_white]"
                       type="radio"
                       name="passwordProtection"
                       value="yes"
@@ -210,9 +210,9 @@ function CreateVault() {
                     />
                     Yes
                   </label>
-                  <label className="flex cursor-pointer items-center gap-2 text-(--color-text-secondary)">
+                  <label className="flex cursor-pointer items-center gap-2 text-[15px] text-(--color-text-secondary)">
                     <input
-                      className="h-4.5 w-4.5 cursor-pointer appearance-none rounded-full border-2 border-(--color-border) transition checked:border-(--color-accent) checked:bg-(--color-accent) checked:shadow-[inset_0_0_0_4px_white]"
+                      className="h-4 w-4 cursor-pointer appearance-none rounded-full border-2 border-(--color-border) transition checked:border-(--color-accent) checked:bg-(--color-accent) checked:shadow-[inset_0_0_0_3px_white]"
                       type="radio"
                       name="passwordProtection"
                       value="no"
@@ -225,9 +225,9 @@ function CreateVault() {
               </fieldset>
               {passwordProtection && (
                 <>
-                  <div className="mb-5 flex flex-col gap-2">
+                  <div className="mb-4 flex flex-col gap-1.5">
                     <label
-                      className="text-[16px] text-(--color-text-secondary)"
+                      className="text-[15px] text-(--color-text-secondary)"
                       htmlFor="password"
                     >
                       Password
@@ -236,7 +236,7 @@ function CreateVault() {
                       <input
                         id="password"
                         name="password"
-                        className={`h-10.5 flex-1 rounded-[10px] border px-3 text-[16px] outline-none transition ${
+                        className={`h-10 flex-1 rounded-[9px] border px-3 text-[15px] outline-none transition ${
                           firstError && firstError === errors.password
                             ? "border-(--color-danger) shadow-[0_0_0_2px_rgba(225,29,72,0.15)]"
                             : "border-(--color-border) bg-(--color-surface-muted) text-(--color-text-primary) focus:border-(--color-accent) focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)]"
@@ -246,21 +246,21 @@ function CreateVault() {
                         onChange={(event) => setPassword(event.target.value)}
                       />
                       <button
-                        className="flex h-10.5 w-11.25 items-center justify-center rounded-[10px] bg-transparent text-(--color-text-secondary)"
+                        className="flex h-10 w-10.5 items-center justify-center rounded-[9px] bg-transparent text-(--color-text-secondary)"
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                       >
                         {showPassword ? (
-                          <EyeOff className="h-5.5 w-5.5" />
+                          <EyeOff className="h-5 w-5" />
                         ) : (
-                          <Eye className="h-5.5 w-5.5" />
+                          <Eye className="h-5 w-5" />
                         )}
                       </button>
                     </div>
                   </div>
-                  <div className="mb-5 flex flex-col gap-2">
+                  <div className="mb-4 flex flex-col gap-1.5">
                     <label
-                      className="text-[16px] text-(--color-text-secondary)"
+                      className="text-[15px] text-(--color-text-secondary)"
                       htmlFor="confirm-password"
                     >
                       Confirm password
@@ -269,7 +269,7 @@ function CreateVault() {
                       <input
                         id="confirm-password"
                         name="confirmPassword"
-                        className={`h-10.5 flex-1 rounded-[10px] border px-3 text-[16px] outline-none transition ${
+                        className={`h-10 flex-1 rounded-[9px] border px-3 text-[15px] outline-none transition ${
                           firstError && firstError === errors.confirmPassword
                             ? "border-(--color-danger) shadow-[0_0_0_2px_rgba(225,29,72,0.15)]"
                             : "border-(--color-border) bg-(--color-surface-muted) text-(--color-text-primary) focus:border-(--color-accent) focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)]"
@@ -281,16 +281,16 @@ function CreateVault() {
                         }
                       />
                       <button
-                        className="flex h-10.5 w-11.25 items-center justify-center rounded-[10px] bg-transparent text-(--color-text-secondary)"
+                        className="flex h-10 w-10.5 items-center justify-center rounded-[9px] bg-transparent text-(--color-text-secondary)"
                         type="button"
                         onClick={() =>
                           setShowConfirmPassword(!showConfirmPassword)
                         }
                       >
                         {showConfirmPassword ? (
-                          <EyeOff className="h-5.5 w-5.5" />
+                          <EyeOff className="h-5 w-5" />
                         ) : (
-                          <Eye className="h-5.5 w-5.5" />
+                          <Eye className="h-5 w-5" />
                         )}
                       </button>
                     </div>
@@ -298,20 +298,20 @@ function CreateVault() {
                 </>
               )}
               {firstError && (
-                <p className="mb-4 text-[14px] leading-[1.4] text-(--color-danger)">
+                <p className="mb-3 text-[13px] leading-[1.4] text-(--color-danger)">
                   {firstError}
                 </p>
               )}
-              <div className="nv-fade-up nv-stagger-3 mt-6 flex justify-end gap-3 [animation-delay:300ms]">
+              <div className="nv-fade-up nv-stagger-3 mt-5 flex justify-end gap-2.5 [animation-delay:300ms]">
                 <button
-                  className="rounded-2xl border border-(--color-border) bg-(--color-surface-muted) px-3 py-1 text-[20px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active)"
+                  className="rounded-2xl border border-(--color-border) bg-(--color-surface-muted) px-3 py-1 text-[18px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active)"
                   type="button"
                   onClick={() => navigate("/get-started")}
                 >
                   Back
                 </button>
                 <button
-                  className={`rounded-2xl px-3 py-1 text-[20px] text-(--color-text-on-accent) transition ${
+                  className={`rounded-2xl px-3 py-1 text-[18px] text-(--color-text-on-accent) transition ${
                     isFormValid
                       ? "bg-(--color-accent) hover:bg-(--color-accent-hover)"
                       : "bg-(--color-accent-soft) text-(--color-text-inverted) hover:bg-(--color-accent-soft-hover)"
