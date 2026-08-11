@@ -1,0 +1,118 @@
+@keyframes nv-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nv-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nv-page-enter {
+  animation: nv-page-enter 180ms ease-out both;
+}
+
+.nv-fade-up {
+  animation: nv-fade-up 180ms ease-out both;
+}
+
+.nv-stagger-1 {
+  animation-delay: 0ms;
+}
+
+.nv-stagger-2 {
+  animation-delay: 75ms;
+}
+
+.nv-stagger-3 {
+  animation-delay: 150ms;
+}
+
+.nv-stagger-4 {
+  animation-delay: 225ms;
+}
+
+@keyframes nv-error-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nv-error-overlay-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes nv-error-popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes nv-error-popup-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+.nv-error-overlay-in {
+  animation: nv-error-overlay-in 180ms ease-out forwards;
+}
+
+.nv-error-overlay-out {
+  animation: nv-error-overlay-out 180ms ease-in forwards;
+}
+
+.nv-error-popup-in {
+  animation: nv-error-popup-in 180ms ease-out forwards;
+}
+
+.nv-error-popup-out {
+  animation: nv-error-popup-out 180ms ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
