@@ -50,6 +50,27 @@ fn create_vault(
 }
 
 #[tauri::command]
+fn open_vault(
+    vault_path: String,
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<(), String> {
+    let opened = vault::open_vault(vault_path)?;
+
+    let mut vault = state
+        .vault
+        .lock()
+        .map_err(|_| "Failed to access Vault state".to_string())?;
+
+    *vault = Some(vault_state::OpenVault {
+        id: opened.id,
+        name: opened.name,
+        path: opened.path,
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
 fn get_open_vault(
     state: tauri::State<'_, vault_state::VaultState>,
 ) -> Result<Option<String>, String> {
@@ -76,6 +97,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             validate_storage_location,
             create_vault,
+            open_vault,
             get_open_vault
         ])
         .run(tauri::generate_context!())

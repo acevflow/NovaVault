@@ -4,19 +4,27 @@
   --color-surface-muted: #eef3f8;
   --color-surface-hover: #e3ebf3;
   --color-surface-active: #d8e1e8;
+
   --color-text-primary: #17212b;
   --color-text-secondary: #445468;
   --color-text-muted: #6f7d8c;
   --color-text-on-accent: #fdfefe;
   --color-text-inverted: #f8fbff;
+
   --color-border: #d7e0ea;
   --color-border-strong: #17212b;
+
   --color-accent: #2563eb;
   --color-accent-hover: #1d4ed8;
   --color-accent-active: #1e40af;
+
   --color-accent-soft: #dbeafe;
   --color-accent-soft-hover: #bfdbfe;
   --color-accent-soft-active: #93c5fd;
+
   --color-danger: #dc2626;
+
   --color-link: #2563eb;
+  --color-link-hover: #3b82f6;
+  --color-link-active: #1d4ed8;
 }

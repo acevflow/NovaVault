@@ -106,6 +106,61 @@ pub fn create_vault(
     })
 }
 
+pub fn open_vault(vault_path: String) -> Result<CreatedVault, String> {
+    let vault_path = PathBuf::from(vault_path);
+
+    if !vault_path.exists() {
+        return Err("The selected Vault does not exist".to_string());
+    }
+
+    if !vault_path.is_dir() {
+        return Err("The selected Vault is not a folder".to_string());
+    }
+
+    let data_path = vault_path.join("data");
+    let objects_path = data_path.join("objects");
+    let database_path = vault_path.join("vault.db");
+
+    if !data_path.is_dir() {
+        return Err("The selected folder is not a valid Vault".to_string());
+    }
+
+    if !objects_path.is_dir() {
+        return Err("The selected folder is not a valid Vault".to_string());
+    }
+
+    if !database_path.is_file() {
+        return Err("The selected folder does not contain a Vault database".to_string());
+    }
+
+    let connection = Connection::open(&database_path)
+        .map_err(|error| format!("Failed to open Vault database: {error}"))?;
+
+    let (id, name, format_version): (String, String, i64) = connection
+        .query_row(
+            "
+            SELECT id, name, format_version
+            FROM vault
+            LIMIT 1
+            ",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|error| format!("Failed to read Vault metadata: {error}"))?;
+
+    if format_version != 1 {
+        return Err(format!(
+            "Unsupported Vault format version: {format_version}"
+        ));
+    }
+
+    Ok(CreatedVault {
+        id,
+        name,
+        path: vault_path,
+    })
+}
+
 fn generate_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
