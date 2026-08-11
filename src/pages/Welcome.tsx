@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Brand from "../components/Brand";
+import CheckingVault from "../components/CheckingVault";
 
 function Welcome() {
   const navigate = useNavigate();
@@ -63,17 +64,7 @@ function Welcome() {
   };
 
   if (checkingVault) {
-    return (
-      <main className="flex min-h-screen w-full items-center justify-center bg-(--color-background)">
-        <div
-          className="text-[15px] text-(--color-text-secondary)"
-          role="status"
-          aria-live="polite"
-        >
-          Checking for your Vault...
-        </div>
-      </main>
-    );
+    return <CheckingVault />;
   }
 
   return (
