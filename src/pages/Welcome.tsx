@@ -62,7 +62,7 @@ function Welcome() {
 
       navigate("/vault");
     } catch (error) {
-      setError(String(Error));
+      setError(String(error));
     }
   };
 

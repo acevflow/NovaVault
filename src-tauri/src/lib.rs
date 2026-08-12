@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use tauri::Manager;
+use tauri::{Manager, State};
 
 mod app_database;
 mod database;
@@ -133,11 +133,14 @@ fn restore_last_vault(
         let vault_path =
             saved_vault.path.to_string_lossy().into_owned();
 
-        let opened = match vault::open_vault(
-            vault_path,
-        ) {
+        let opened = match vault::open_vault(vault_path) {
             Ok(vault) => vault,
             Err(_) => {
+                app_database::remove_vault(
+                    app,
+                    &saved_vault.id,
+                )?;
+
                 continue;
             }
         };
