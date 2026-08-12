@@ -8,6 +8,45 @@ mod database;
 mod vault;
 mod vault_state;
 
+#[derive(serde::Serialize)]
+struct SavedVaultResponse {
+    id: String,
+    name: String,
+    path: String,
+}
+
+#[tauri::command]
+fn get_saved_vaults(
+    app: tauri::AppHandle,
+) -> Result<Vec<SavedVaultResponse>, String> {
+    let vaults = app_database::get_saved_vaults(&app)?;
+
+    Ok(vaults
+        .into_iter()
+        .map(|vault| SavedVaultResponse {
+            id: vault.id,
+            name: vault.name,
+            path: vault.path.to_string_lossy().into_owned(),
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn close_vault(
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<(), String> {
+    let mut vault = state
+        .vault
+        .lock()
+        .map_err(|_| {
+            "Failed to access Vault state".to_string()
+        })?;
+
+    *vault = None;
+
+    Ok(())
+}
+
 #[tauri::command]
 fn validate_storage_location(storage_location: String, vault_name: String) -> Result<(), String> {
     let path = Path::new(&storage_location);
@@ -166,7 +205,9 @@ pub fn run() {
             validate_storage_location,
             create_vault,
             open_vault,
-            get_open_vault
+            get_open_vault,
+            get_saved_vaults,
+            close_vault
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
