@@ -129,9 +129,7 @@ pub fn create_vault(
     })
 }
 
-pub fn open_vault(vault_path: String, password: Option<String>) -> Result<CreatedVault, String> {
-    let vault_path = PathBuf::from(vault_path);
-
+fn load_vault_metadata(vault_path: &PathBuf) -> Result<(String, String, i64, Option<String>), String> {
     if !vault_path.exists() {
         return Err("The selected Vault does not exist".to_string());
     }
@@ -159,10 +157,9 @@ pub fn open_vault(vault_path: String, password: Option<String>) -> Result<Create
     let connection = Connection::open(&database_path)
         .map_err(|error| format!("Failed to open Vault database: {error}"))?;
 
-    let (id, name, format_version, password_hash): (String, String, i64, Option<String>) =
-        connection
-            .query_row(
-                "
+    connection
+        .query_row(
+            "
             SELECT
                 id,
                 name,
@@ -171,16 +168,15 @@ pub fn open_vault(vault_path: String, password: Option<String>) -> Result<Create
             FROM vault
             LIMIT 1
             ",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .map_err(|error| format!("Failed to read Vault metadata: {error}"))?;
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .map_err(|error| format!("Failed to read Vault metadata: {error}"))
+}
 
-    if format_version != 1 {
-        return Err(format!(
-            "Unsupported Vault format version: {format_version}"
-        ));
-    }
+pub fn open_vault(vault_path: String, password: Option<String>) -> Result<CreatedVault, String> {
+    let vault_path = PathBuf::from(vault_path);
+    let (id, name, _format_version, password_hash) = load_vault_metadata(&vault_path)?;
 
     match &password_hash {
         Some(hash) => {
@@ -196,6 +192,18 @@ pub fn open_vault(vault_path: String, password: Option<String>) -> Result<Create
             }
         }
     }
+
+    Ok(CreatedVault {
+        id,
+        name,
+        path: vault_path,
+        password_protected: password_hash.is_some(),
+    })
+}
+
+pub fn open_vault_without_password(vault_path: String) -> Result<CreatedVault, String> {
+    let vault_path = PathBuf::from(vault_path);
+    let (id, name, _format_version, password_hash) = load_vault_metadata(&vault_path)?;
 
     Ok(CreatedVault {
         id,
