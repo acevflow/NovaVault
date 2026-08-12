@@ -9,9 +9,7 @@ mod vault;
 mod vault_state;
 
 #[tauri::command]
-fn validate_storage_location(
-    storage_location: String,
-) -> Result<(), String> {
+fn validate_storage_location(storage_location: String, vault_name: String) -> Result<(), String> {
     let path = Path::new(&storage_location);
 
     if !path.exists() {
@@ -22,13 +20,16 @@ fn validate_storage_location(
         return Err("The selected path is not a folder".to_string());
     }
 
-    let mut entries = fs::read_dir(path)
-        .map_err(|error| {
-            format!("Failed to read the selected folder: {error}")
-        })?;
+    let vault_name = vault_name.trim();
 
-    if entries.next().is_some() {
-        return Err("The selected folder is not empty".to_string());
+    if vault_name.is_empty() {
+        return Ok(());
+    }
+
+    let vault_path = path.join(vault_name);
+
+    if vault_path.exists() {
+        return Err("A Vault with this name already exists in the selected folder".to_string());
     }
 
     Ok(())
@@ -41,10 +42,7 @@ fn create_vault(
     storage_location: String,
     state: tauri::State<'_, vault_state::VaultState>,
 ) -> Result<String, String> {
-    let created = vault::create_vault(
-        vault_name,
-        storage_location,
-    )?;
+    let created = vault::create_vault(vault_name, storage_location)?;
 
     app_database::register_vault(
         &app,
@@ -56,9 +54,7 @@ fn create_vault(
     let mut vault = state
         .vault
         .lock()
-        .map_err(|_| {
-            "Failed to access Vault state".to_string()
-        })?;
+        .map_err(|_| "Failed to access Vault state".to_string())?;
 
     *vault = Some(vault_state::OpenVault {
         id: created.id,
@@ -75,9 +71,7 @@ fn open_vault(
     vault_path: String,
     state: tauri::State<'_, vault_state::VaultState>,
 ) -> Result<(), String> {
-    let opened = vault::open_vault(
-        vault_path,
-    )?;
+    let opened = vault::open_vault(vault_path)?;
 
     app_database::register_vault(
         &app,
@@ -89,9 +83,7 @@ fn open_vault(
     let mut vault = state
         .vault
         .lock()
-        .map_err(|_| {
-            "Failed to access Vault state".to_string()
-        })?;
+        .map_err(|_| "Failed to access Vault state".to_string())?;
 
     *vault = Some(vault_state::OpenVault {
         id: opened.id,
@@ -109,38 +101,25 @@ fn get_open_vault(
     let vault = state
         .vault
         .lock()
-        .map_err(|_| {
-            "Failed to access Vault state".to_string()
-        })?;
+        .map_err(|_| "Failed to access Vault state".to_string())?;
 
     Ok(vault
         .as_ref()
-        .map(|vault| {
-            vault.path
-                .to_string_lossy()
-                .into_owned()
-        }))
+        .map(|vault| vault.path.to_string_lossy().into_owned()))
 }
 
 fn restore_last_vault(
     app: &tauri::AppHandle,
     state: &vault_state::VaultState,
 ) -> Result<(), String> {
-    let saved_vaults =
-        app_database::get_saved_vaults(app)?;
+    let saved_vaults = app_database::get_saved_vaults(app)?;
 
     for saved_vault in saved_vaults {
-        let vault_path =
-            saved_vault.path.to_string_lossy().into_owned();
+        let vault_path = saved_vault.path.to_string_lossy().into_owned();
 
         let opened = match vault::open_vault(vault_path) {
             Ok(vault) => vault,
             Err(_) => {
-                app_database::remove_vault(
-                    app,
-                    &saved_vault.id,
-                )?;
-
                 continue;
             }
         };
@@ -149,9 +128,7 @@ fn restore_last_vault(
             let mut vault = state
                 .vault
                 .lock()
-                .map_err(|_| {
-                    "Failed to access Vault state".to_string()
-                })?;
+                .map_err(|_| "Failed to access Vault state".to_string())?;
 
             *vault = Some(vault_state::OpenVault {
                 id: opened.id.clone(),
@@ -160,10 +137,7 @@ fn restore_last_vault(
             });
         }
 
-        app_database::mark_vault_opened(
-            app,
-            &opened.id,
-        )?;
+        app_database::mark_vault_opened(app, &opened.id)?;
 
         return Ok(());
     }
@@ -178,29 +152,22 @@ pub fn run() {
             vault: std::sync::Mutex::new(None),
         })
         .setup(|app| {
-            app_database::initialize(
-                app.handle(),
-            )?;
+            app_database::initialize(app.handle())?;
 
             let state = app.state::<vault_state::VaultState>();
 
-            restore_last_vault(
-                app.handle(),
-                &state,
-            )?;
+            restore_last_vault(app.handle(), &state)?;
 
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(
-            tauri::generate_handler![
-                validate_storage_location,
-                create_vault,
-                open_vault,
-                get_open_vault
-            ],
-        )
+        .invoke_handler(tauri::generate_handler![
+            validate_storage_location,
+            create_vault,
+            open_vault,
+            get_open_vault
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

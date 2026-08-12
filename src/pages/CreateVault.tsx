@@ -44,16 +44,6 @@ function CreateVault() {
     }
 
     setStorageLocation(selected);
-
-    try {
-      await invoke("validate_storage_location", {
-        storageLocation: selected,
-      });
-
-      setStorageError("");
-    } catch (error) {
-      setStorageError(String(error));
-    }
   };
 
   const validationErrors = validateVaultForm({
@@ -89,6 +79,38 @@ function CreateVault() {
     confirmPassword,
     hasSubmitted,
   ]);
+
+  useEffect(() => {
+    if (!storageLocation) {
+      setStorageError("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const validateStorage = async () => {
+      try {
+        await invoke("validate_storage_location", {
+          storageLocation,
+          vaultName,
+        });
+
+        if (!cancelled) {
+          setStorageError("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setStorageError(String(error));
+        }
+      }
+    };
+
+    validateStorage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storageLocation, vaultName]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
