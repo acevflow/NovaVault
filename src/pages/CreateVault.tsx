@@ -135,6 +135,7 @@ function CreateVault() {
       await invoke("create_vault", {
         vaultName,
         storageLocation,
+        password: passwordProtection ? password : null,
       });
 
       navigate("/vault");

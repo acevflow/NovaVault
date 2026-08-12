@@ -1,54 +1,14 @@
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use tauri::{Manager, State};
+use tauri::Manager;
 
 mod app_database;
 mod database;
 mod vault;
 mod vault_state;
 
-#[derive(serde::Serialize)]
-struct SavedVaultResponse {
-    id: String,
-    name: String,
-    path: String,
-}
-
 #[tauri::command]
-fn get_saved_vaults(
-    app: tauri::AppHandle,
-) -> Result<Vec<SavedVaultResponse>, String> {
-    let vaults = app_database::get_saved_vaults(&app)?;
-
-    Ok(vaults
-        .into_iter()
-        .map(|vault| SavedVaultResponse {
-            id: vault.id,
-            name: vault.name,
-            path: vault.path.to_string_lossy().into_owned(),
-        })
-        .collect())
-}
-
-#[tauri::command]
-fn close_vault(
-    state: tauri::State<'_, vault_state::VaultState>,
-) -> Result<(), String> {
-    let mut vault = state
-        .vault
-        .lock()
-        .map_err(|_| {
-            "Failed to access Vault state".to_string()
-        })?;
-
-    *vault = None;
-
-    Ok(())
-}
-
-#[tauri::command]
-fn validate_storage_location(storage_location: String, vault_name: String) -> Result<(), String> {
+fn validate_storage_location(storage_location: String, vault_name: Option<String>) -> Result<(), String> {
     let path = Path::new(&storage_location);
 
     if !path.exists() {
@@ -59,16 +19,12 @@ fn validate_storage_location(storage_location: String, vault_name: String) -> Re
         return Err("The selected path is not a folder".to_string());
     }
 
-    let vault_name = vault_name.trim();
+    if let Some(vault_name) = vault_name {
+        let vault_path = path.join(vault_name.trim());
 
-    if vault_name.is_empty() {
-        return Ok(());
-    }
-
-    let vault_path = path.join(vault_name);
-
-    if vault_path.exists() {
-        return Err("A Vault with this name already exists in the selected folder".to_string());
+        if vault_path.exists() {
+            return Err("A folder with this Vault name already exists in the selected folder".to_string());
+        }
     }
 
     Ok(())
@@ -79,9 +35,10 @@ fn create_vault(
     app: tauri::AppHandle,
     vault_name: String,
     storage_location: String,
+    password: Option<String>,
     state: tauri::State<'_, vault_state::VaultState>,
 ) -> Result<String, String> {
-    let created = vault::create_vault(vault_name, storage_location)?;
+    let created = vault::create_vault(vault_name, storage_location, password)?;
 
     app_database::register_vault(
         &app,
@@ -108,9 +65,10 @@ fn create_vault(
 fn open_vault(
     app: tauri::AppHandle,
     vault_path: String,
+    password: Option<String>,
     state: tauri::State<'_, vault_state::VaultState>,
 ) -> Result<(), String> {
-    let opened = vault::open_vault(vault_path)?;
+    let opened = vault::open_vault(vault_path, password)?;
 
     app_database::register_vault(
         &app,
@@ -118,6 +76,15 @@ fn open_vault(
         &opened.name,
         &opened.path.to_string_lossy(),
     )?;
+
+    {
+        let mut pending_unlock = state
+            .pending_unlock
+            .lock()
+            .map_err(|_| "Failed to access pending Vault state".to_string())?;
+
+        *pending_unlock = None;
+    }
 
     let mut vault = state
         .vault
@@ -154,22 +121,46 @@ fn restore_last_vault(
     let saved_vaults = app_database::get_saved_vaults(app)?;
 
     for saved_vault in saved_vaults {
-        let vault_path = saved_vault.path.to_string_lossy().into_owned();
+        let vault_path = saved_vault.path.clone();
 
-        let opened = match vault::open_vault(vault_path) {
+        let password_protected = match vault::is_vault_password_protected(vault_path.clone()) {
+            Ok(protected) => protected,
+            Err(_) => {
+                app_database::remove_vault(app, &saved_vault.id)?;
+                continue;
+            }
+        };
+
+        if password_protected {
+            let mut pending_unlock = state
+                .pending_unlock
+                .lock()
+                .map_err(|_| "Failed to access pending Vault state".to_string())?;
+
+            *pending_unlock = Some(vault_state::PendingUnlock {
+                id: saved_vault.id.clone(),
+                name: saved_vault.name.clone(),
+                path: PathBuf::from(vault_path.clone()),
+            });
+
+            return Ok(());
+        }
+
+        let opened = match vault::open_vault(vault_path.clone(), None) {
             Ok(vault) => vault,
             Err(_) => {
+                app_database::remove_vault(app, &saved_vault.id)?;
                 continue;
             }
         };
 
         {
-            let mut vault = state
+            let mut vault_state = state
                 .vault
                 .lock()
                 .map_err(|_| "Failed to access Vault state".to_string())?;
 
-            *vault = Some(vault_state::OpenVault {
+            *vault_state = Some(vault_state::OpenVault {
                 id: opened.id.clone(),
                 name: opened.name.clone(),
                 path: opened.path.clone(),
@@ -184,11 +175,68 @@ fn restore_last_vault(
     Ok(())
 }
 
+#[tauri::command]
+fn verify_vault_password(vault_path: String, password: String) -> Result<bool, String> {
+    vault::verify_vault_password(vault_path, password)
+}
+
+#[tauri::command]
+fn is_vault_password_protected(vault_path: String) -> Result<bool, String> {
+    vault::is_vault_password_protected(vault_path)
+}
+
+#[tauri::command]
+fn get_pending_unlock(
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<Option<String>, String> {
+    let pending_unlock = state
+        .pending_unlock
+        .lock()
+        .map_err(|_| "Failed to access pending Vault state".to_string())?;
+
+    Ok(pending_unlock
+        .as_ref()
+        .map(|vault| vault.path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+fn get_saved_vaults(app: tauri::AppHandle) -> Result<Vec<app_database::AppVault>, String> {
+    let saved_vaults = app_database::get_saved_vaults(&app)?;
+    let mut valid_vaults = Vec::new();
+
+    for vault in saved_vaults {
+        let path = Path::new(&vault.path);
+
+        if path.exists() {
+            valid_vaults.push(vault);
+            continue;
+        }
+
+        let _ = app_database::remove_vault(&app, &vault.id);
+    }
+
+    Ok(valid_vaults)
+}
+
+#[tauri::command]
+fn clear_pending_unlock(
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<(), String> {
+    let mut pending_unlock = state
+        .pending_unlock
+        .lock()
+        .map_err(|_| "Failed to access pending Vault state".to_string())?;
+
+    *pending_unlock = None;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(vault_state::VaultState {
             vault: std::sync::Mutex::new(None),
+            pending_unlock: std::sync::Mutex::new(None),
         })
         .setup(|app| {
             app_database::initialize(app.handle())?;
@@ -206,8 +254,11 @@ pub fn run() {
             create_vault,
             open_vault,
             get_open_vault,
+            verify_vault_password,
+            is_vault_password_protected,
+            get_pending_unlock,
             get_saved_vaults,
-            close_vault
+            clear_pending_unlock
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

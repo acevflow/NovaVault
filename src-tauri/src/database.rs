@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub fn initialize_database(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(
@@ -10,10 +10,11 @@ pub fn initialize_database(connection: &Connection) -> rusqlite::Result<()> {
             name TEXT NOT NULL,
             format_version INTEGER NOT NULL,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            password_hash TEXT
         );
 
-        PRAGMA user_version = 1;
+        PRAGMA user_version = 2;
         ",
     )?;
 

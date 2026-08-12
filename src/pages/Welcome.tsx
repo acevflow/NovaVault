@@ -29,6 +29,17 @@ function Welcome() {
           navigate("/vault", { replace: true });
           return;
         }
+
+        const pendingUnlock = await invoke<string | null>("get_pending_unlock");
+
+        if (cancelled) {
+          return;
+        }
+
+        if (pendingUnlock) {
+          navigate("/unlock-vault", { replace: true });
+          return;
+        }
       } catch (error) {
         setError(String(error));
       }
@@ -56,6 +67,23 @@ function Welcome() {
     }
 
     try {
+      const passwordProtected = await invoke<boolean>(
+        "is_vault_password_protected",
+        {
+          vaultPath: selected,
+        },
+      );
+
+      if (passwordProtected) {
+        navigate("/unlock-vault", {
+          state: {
+            vaultPath: selected,
+          },
+        });
+
+        return;
+      }
+
       await invoke("open_vault", {
         vaultPath: selected,
       });

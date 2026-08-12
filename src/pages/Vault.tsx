@@ -19,6 +19,13 @@ function Vault() {
   const [vaults, setVaults] = useState<SavedVault[]>([]);
   const [openVault, setOpenVault] = useState<SavedVault | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [passwordPromptVault, setPasswordPromptVault] =
+    useState<SavedVault | null>(null);
+  const [passwordPrompt, setPasswordPrompt] = useState("");
+  const [passwordPromptError, setPasswordPromptError] = useState<string | null>(
+    null,
+  );
+  const [passwordPromptLoading, setPasswordPromptLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -64,31 +71,97 @@ function Vault() {
   }, []);
 
   const handleSwitchVault = async (vault: SavedVault) => {
-    if (loading || vault.id === openVault?.id) {
-      setMenuOpen(false);
+    if (loading) {
       return;
     }
 
     setLoading(true);
 
     try {
-      await invoke("close_vault");
-
       await invoke("open_vault", {
         vaultPath: vault.path,
       });
 
       setOpenVault(vault);
-
-      const updatedVaults = await invoke<SavedVault[]>("get_saved_vaults");
-
-      setVaults(updatedVaults);
       setMenuOpen(false);
     } catch (error) {
-      setError(String(error));
+      const message = String(error);
+
+      if (message.includes("This Vault is protected by a password")) {
+        setPasswordPromptError(null);
+        setPasswordPrompt("");
+        setPasswordPromptVault(vault);
+        setMenuOpen(false);
+        return;
+      }
+
+      if (message.includes("does not exist")) {
+        setVaults((previous) =>
+          previous.filter((item) => item.id !== vault.id),
+        );
+        setError(
+          "The selected Vault no longer exists and was removed from the list",
+        );
+        return;
+      }
+
+      setError(message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePasswordPromptSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+
+    if (!passwordPromptVault) {
+      return;
+    }
+
+    setPasswordPromptLoading(true);
+    setPasswordPromptError(null);
+
+    try {
+      await invoke("open_vault", {
+        vaultPath: passwordPromptVault.path,
+        password: passwordPrompt,
+      });
+
+      setOpenVault(passwordPromptVault);
+      setPasswordPromptVault(null);
+      setPasswordPrompt("");
+      setMenuOpen(false);
+    } catch (error) {
+      const message = String(error);
+
+      if (message.includes("Incorrect Vault password")) {
+        setPasswordPromptError("Incorrect password");
+        return;
+      }
+
+      if (message.includes("does not exist")) {
+        setVaults((previous) =>
+          previous.filter((item) => item.id !== passwordPromptVault.id),
+        );
+        setPasswordPromptVault(null);
+        setError(
+          "The selected Vault no longer exists and was removed from the list",
+        );
+        return;
+      }
+
+      setPasswordPromptError(message);
+    } finally {
+      setPasswordPromptLoading(false);
+    }
+  };
+
+  const handlePasswordPromptCancel = () => {
+    setPasswordPromptVault(null);
+    setPasswordPrompt("");
+    setPasswordPromptError(null);
   };
 
   const handleOpenVault = async () => {
@@ -162,7 +235,7 @@ function Vault() {
               Files
             </h1>
             <p className="mt-2 text-[16px] text-(--color-text-secondary)">
-              Browse your Vault files and folders.
+              Browse your Vault files and folders
             </p>
           </div>
           <div ref={menuRef} className="relative">
@@ -226,9 +299,71 @@ function Vault() {
           </div>
         </header>
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-(--color-text-muted)">Your Vault is empty.</p>
+          <p className="text-(--color-text-muted)">Your Vault is empty</p>
         </div>
       </section>
+
+      {passwordPromptVault && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="password-prompt-title"
+        >
+          <div className="w-full max-w-md rounded-[20px] border border-(--color-border-strong) bg-(--color-surface) p-6 shadow-xl">
+            <h2
+              id="password-prompt-title"
+              className="text-[18px] font-semibold text-(--color-text-primary)"
+            >
+              Unlock Vault
+            </h2>
+            <p className="mt-2 text-[15px] text-(--color-text-secondary)">
+              Enter the password for {passwordPromptVault.name}
+            </p>
+            <form
+              className="mt-5 flex flex-col gap-4"
+              onSubmit={handlePasswordPromptSubmit}
+            >
+              <label
+                className="text-[15px] text-(--color-text-secondary)"
+                htmlFor="vault-password-prompt"
+              >
+                Password
+              </label>
+              <input
+                id="vault-password-prompt"
+                type="password"
+                value={passwordPrompt}
+                onChange={(event) => setPasswordPrompt(event.target.value)}
+                disabled={passwordPromptLoading}
+                className="h-10 w-full rounded-[9px] border border-(--color-border) bg-(--color-surface-muted) px-3 text-[15px] text-(--color-text-primary) outline-none transition focus:border-(--color-accent) focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)] disabled:opacity-60"
+              />
+              {passwordPromptError && (
+                <p className="text-[14px] text-(--color-danger)">
+                  {passwordPromptError}
+                </p>
+              )}
+              <div className="mt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-2xl border border-(--color-border) bg-(--color-surface-muted) px-4 py-2 text-[15px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active) disabled:opacity-50"
+                  onClick={handlePasswordPromptCancel}
+                  disabled={passwordPromptLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-(--color-accent) px-4 py-2 text-[15px] font-semibold text-(--color-text-on-accent) transition hover:bg-(--color-accent-hover) active:bg-(--color-accent-active) disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={passwordPromptLoading}
+                >
+                  {passwordPromptLoading ? "Unlocking..." : "Unlock"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
