@@ -12,6 +12,7 @@ pub struct OpenVault {
     pub id: String,
     pub name: String,
     pub path: PathBuf,
+    pub encryption_key: [u8; 32],
 }
 
 #[derive(Clone)]

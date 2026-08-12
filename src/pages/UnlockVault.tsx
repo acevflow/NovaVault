@@ -3,6 +3,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import Brand from "../components/Brand";
+import ErrorPopup from "../components/ErrorPopup";
 
 interface UnlockVaultLocationState {
   vaultPath?: string;
@@ -22,11 +24,6 @@ function UnlockVault() {
   const [showPassword, setShowPassword] = useState(false);
   const [loadingVault, setLoadingVault] = useState(true);
   const [unlocking, setUnlocking] = useState(false);
-
-  const deriveVaultName = (path: string) => {
-    const parts = path.split(/[/\\]/).filter(Boolean);
-    return parts.length ? parts[parts.length - 1] : path;
-  };
 
   const updateVaultSelection = async (path: string | null) => {
     setVaultPath(path);
@@ -199,115 +196,82 @@ function UnlockVault() {
   }
 
   return (
-    <main className="nv-page-enter flex min-h-screen w-full items-center justify-center bg-(--color-background) py-10 px-4 sm:px-6">
-      <section className="w-full max-w-6xl">
-        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="nv-fade-up nv-stagger-1 rounded-4xl border border-(--color-border-strong) bg-(--color-surface) p-8 shadow-[0_28px_60px_rgba(17,24,39,0.08)]">
-            <div className="flex flex-col gap-6 rounded-[30px] border border-(--color-border) bg-(--color-surface-muted) p-6 sm:p-8">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-(--color-accent-soft)">
-                    <LockKeyhole className="h-7 w-7 text-(--color-accent)" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] uppercase tracking-[0.24em] text-(--color-text-secondary)">
-                      Unlock Vault
-                    </p>
-                    <h1 className="mt-2 text-3xl font-semibold text-(--color-text-primary) sm:text-4xl">
-                      Secure access in one place
-                    </h1>
-                  </div>
-                </div>
-                <div className="rounded-full bg-(--color-background) px-4 py-2 text-[13px] font-medium text-(--color-text-secondary)">
-                  {vaultPath ? "Vault selected" : "Select a Vault"}
-                </div>
+    <main className="flex min-h-screen w-full flex-row bg-(--color-background)">
+      <ErrorPopup
+        open={vaultSelectionError !== null}
+        message={vaultSelectionError ?? ""}
+        onClose={() => setVaultSelectionError(null)}
+      />
+      <section className="flex flex-1 items-center justify-center p-6">
+        <div className="nv-page-enter nv-stagger-1">
+          <Brand />
+        </div>
+      </section>
+
+      <section className="flex flex-1 items-center justify-center p-5">
+        <div className="nv-page-enter nv-stagger-2 w-full max-w-[32rem]">
+          <div className="w-full animate-page-enter">
+            <header className="rounded-t-[22px] border border-b-0 border-(--color-border-strong) bg-(--color-surface) px-5 pt-5 text-center xl:px-6 xl:pt-6">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-(--color-accent-soft)">
+                <LockKeyhole className="h-5 w-5 text-(--color-accent)" />
               </div>
-              <p className="max-w-2xl text-[15px] leading-relaxed text-(--color-text-secondary)">
-                Open a Vault directory and unlock it with a password if needed.
-                You can also create a new Vault and return here to access it.
+              <h2 className="m-0 text-[28px] font-semibold text-(--color-text-primary) xl:text-[30px] 2xl:text-[32px]">
+                Unlock Vault
+              </h2>
+              <p className="mb-0 mt-1.5 text-[16px] text-(--color-text-secondary) xl:text-[17px] 2xl:text-[18px]">
+                Pick your Vault and verify access.
               </p>
-            </div>
-            <div className="mt-10 space-y-6">
-              <div className="rounded-[28px] border border-(--color-border) bg-(--color-surface-muted) p-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-[13px] uppercase tracking-[0.24em] text-(--color-text-secondary)">
-                      Selected Vault
-                    </p>
-                    <p className="mt-3 text-[20px] font-semibold text-(--color-text-primary)">
-                      {vaultPath
-                        ? deriveVaultName(vaultPath)
-                        : "No vault selected"}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-(--color-background) px-3 py-1 text-[13px] text-(--color-text-secondary)">
-                    {vaultProtected === null
-                      ? "Unknown"
-                      : vaultProtected
-                        ? "Protected"
-                        : "Unlocked"}
-                  </span>
+            </header>
+
+            <form
+              className="rounded-b-[22px] border border-t-0 border-(--color-border-strong) bg-(--color-surface) px-4 pb-5 pt-3.5 xl:px-5 xl:pb-6 xl:pt-4"
+              onSubmit={handleUnlock}
+            >
+              <div className="mb-4 flex flex-col gap-1.5">
+                <label
+                  className="text-[15px] text-(--color-text-secondary)"
+                  htmlFor="vault-path"
+                >
+                  Vault location
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="vault-path"
+                    type="text"
+                    value={vaultPath ?? ""}
+                    readOnly
+                    placeholder="Select a Vault folder"
+                    className="h-10 flex-1 rounded-[9px] border border-(--color-border) bg-(--color-surface-muted) px-3 text-[15px] text-(--color-text-primary) outline-none transition focus:border-(--color-accent) focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)]"
+                  />
+                  <button
+                    type="button"
+                    className="h-10 min-w-18 rounded-[9px] border border-(--color-border) bg-(--color-surface-muted) px-3 text-[15px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active)"
+                    onClick={handleBrowseVault}
+                  >
+                    Browse
+                  </button>
                 </div>
-                <p className="mt-4 text-[14px] text-(--color-text-secondary) break-all">
-                  {vaultPath ||
-                    "Choose a Vault directory from disk or create a new Vault to continue."}
-                </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={handleBrowseVault}
-                  className="rounded-2xl border border-(--color-border) bg-(--color-surface) px-5 py-4 text-[15px] font-medium text-(--color-text-primary) transition hover:bg-(--color-surface-hover)"
-                >
-                  Open Vault
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/create-vault")}
-                  className="rounded-2xl bg-(--color-accent) px-5 py-4 text-[15px] font-semibold text-(--color-text-on-accent) transition hover:bg-(--color-accent-hover)"
-                >
-                  Create Vault
-                </button>
-              </div>
-              {vaultSelectionError && (
-                <div className="rounded-2xl bg-[#fde8e8] p-4 text-[14px] text-(--color-danger)">
-                  {vaultSelectionError}
+
+              {vaultProtected !== false && (
+                <div className="mb-4 rounded-[12px] border border-(--color-border) bg-(--color-surface-muted) px-3 py-2 text-[14px] leading-relaxed text-(--color-text-secondary)">
+                  {vaultProtected === null
+                    ? "Select a Vault to see whether it needs a password."
+                    : vaultProtected
+                      ? "This Vault is protected by a password. Enter it below."
+                      : "This Vault is already unlocked and can be opened immediately."}
                 </div>
               )}
-            </div>
-          </div>
-          <div className="nv-fade-up nv-stagger-2 rounded-4xl border border-(--color-border-strong) bg-(--color-surface) p-8 shadow-[0_28px_60px_rgba(17,24,39,0.08)]">
-            <div className="mb-6">
-              <p className="text-[13px] uppercase tracking-[0.24em] text-(--color-text-secondary)">
-                Secure access
-              </p>
-              <h2 className="mt-3 text-2xl font-semibold text-(--color-text-primary)">
-                Unlock your Vault
-              </h2>
-              <p className="mt-3 text-[15px] text-(--color-text-secondary)">
-                Enter the password if the selected Vault is protected. If not,
-                just proceed to unlock.
-              </p>
-            </div>
-            {vaultProtected !== false && (
-              <div className="mb-6 rounded-[20px] border border-(--color-border) bg-(--color-surface-muted) p-4 text-[14px] text-(--color-text-secondary)">
-                {vaultProtected === null
-                  ? "Select a Vault to see whether it needs a password."
-                  : vaultProtected
-                    ? "This Vault is protected by a password. Enter it below to unlock."
-                    : "This Vault does not require a password. You can unlock immediately."}
-              </div>
-            )}
-            <form className="space-y-5" onSubmit={handleUnlock}>
+
               {vaultProtected && (
-                <div className="space-y-3">
+                <div className="mb-4 flex flex-col gap-1.5">
                   <label
-                    className="block text-[15px] font-medium text-(--color-text-secondary)"
+                    className="text-[15px] text-(--color-text-secondary)"
                     htmlFor="vault-password"
                   >
-                    Vault Password
+                    Vault password
                   </label>
-                  <div className="flex gap-2 flex-col sm:flex-row">
+                  <div className="flex gap-2">
                     <input
                       id="vault-password"
                       type={showPassword ? "text" : "password"}
@@ -315,21 +279,19 @@ function UnlockVault() {
                       onChange={(event) => setPassword(event.target.value)}
                       autoFocus
                       disabled={unlocking}
-                      className="h-12 flex-1 rounded-[11px] border border-(--color-border) bg-(--color-surface-muted) px-4 text-[15px] text-(--color-text-primary) outline-none transition focus:border-(--color-accent) focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)] disabled:opacity-60"
+                      className="h-10 flex-1 rounded-[9px] border border-(--color-border) bg-(--color-surface-muted) px-3 text-[15px] text-(--color-text-primary) outline-none transition focus:border-(--color-accent) focus:shadow-[0_0_0_2px_rgba(37,99,235,0.15)] disabled:opacity-60"
                     />
                     <button
                       type="button"
                       disabled={unlocking}
-                      aria-label={
-                        showPassword ? "Hide password" : "Show password"
-                      }
-                      className="flex h-12 w-12 items-center justify-center rounded-[11px] border border-(--color-border) bg-(--color-surface) text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active) disabled:opacity-50"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className="flex h-10 w-10 items-center justify-center rounded-[9px] border border-(--color-border) bg-(--color-surface) text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active) disabled:opacity-50"
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-5 w-5" />
+                        <EyeOff className="h-4 w-4" />
                       ) : (
-                        <Eye className="h-5 w-5" />
+                        <Eye className="h-4 w-4" />
                       )}
                     </button>
                   </div>
@@ -340,11 +302,18 @@ function UnlockVault() {
                   )}
                 </div>
               )}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+              {vaultSelectionError && (
+                <div className="mb-4 rounded-[10px] bg-[#fee2e2] p-3 text-[14px] text-(--color-danger)">
+                  {vaultSelectionError}
+                </div>
+              )}
+
+              <div className="mt-5 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   disabled={unlocking}
-                  className="rounded-2xl border border-(--color-border) bg-(--color-surface-muted) px-4 py-3 text-[16px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active) disabled:opacity-50"
+                  className="rounded-2xl border border-(--color-border) bg-(--color-surface-muted) px-4 py-2 text-[16px] text-(--color-text-secondary) transition hover:bg-(--color-surface-hover) active:bg-(--color-surface-active) disabled:opacity-50"
                   onClick={handleBack}
                 >
                   Back
@@ -352,7 +321,7 @@ function UnlockVault() {
                 <button
                   type="submit"
                   disabled={unlocking || !vaultPath}
-                  className="rounded-2xl bg-(--color-accent) px-4 py-3 text-[16px] font-semibold text-(--color-text-on-accent) transition hover:bg-(--color-accent-hover) active:bg-(--color-accent-active) disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-2xl bg-(--color-accent) px-4 py-2 text-[16px] font-semibold text-(--color-text-on-accent) transition hover:bg-(--color-accent-hover) active:bg-(--color-accent-active) disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {unlocking ? "Unlocking..." : "Unlock Vault"}
                 </button>

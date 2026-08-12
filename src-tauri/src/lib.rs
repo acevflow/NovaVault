@@ -8,7 +8,10 @@ mod vault;
 mod vault_state;
 
 #[tauri::command]
-fn validate_storage_location(storage_location: String, vault_name: Option<String>) -> Result<(), String> {
+fn validate_storage_location(
+    storage_location: String,
+    vault_name: Option<String>,
+) -> Result<(), String> {
     let path = Path::new(&storage_location);
 
     if !path.exists() {
@@ -23,7 +26,9 @@ fn validate_storage_location(storage_location: String, vault_name: Option<String
         let vault_path = path.join(vault_name.trim());
 
         if vault_path.exists() {
-            return Err("A folder with this Vault name already exists in the selected folder".to_string());
+            return Err(
+                "A folder with this Vault name already exists in the selected folder".to_string(),
+            );
         }
     }
 
@@ -56,6 +61,7 @@ fn create_vault(
         id: created.id.clone(),
         name: created.name.clone(),
         path: created.path.clone(),
+        encryption_key: created.encryption_key,
     };
 
     *vault = Some(created_vault.clone());
@@ -80,28 +86,33 @@ fn open_vault(
     state: tauri::State<'_, vault_state::VaultState>,
 ) -> Result<(), String> {
     let vault_path_buf = PathBuf::from(&vault_path);
-    let is_already_unlocked = {
+    let opened_vault = {
         let unlocked_vaults = state
             .unlocked_vaults
             .lock()
             .map_err(|_| "Failed to access unlocked Vaults state".to_string())?;
 
-        unlocked_vaults
+        if let Some(existing) = unlocked_vaults
             .iter()
-            .any(|vault| vault.path == vault_path_buf)
-    };
-
-    let opened = if is_already_unlocked {
-        vault::open_vault_without_password(vault_path.clone())?
-    } else {
-        vault::open_vault(vault_path.clone(), password)?
+            .find(|vault| vault.path == vault_path_buf)
+        {
+            existing.clone()
+        } else {
+            let opened = vault::open_vault(vault_path.clone(), password)?;
+            vault_state::OpenVault {
+                id: opened.id.clone(),
+                name: opened.name.clone(),
+                path: opened.path.clone(),
+                encryption_key: opened.encryption_key,
+            }
+        }
     };
 
     app_database::register_vault(
         &app,
-        &opened.id,
-        &opened.name,
-        &opened.path.to_string_lossy(),
+        &opened_vault.id,
+        &opened_vault.name,
+        &opened_vault.path.to_string_lossy(),
     )?;
 
     {
@@ -118,12 +129,6 @@ fn open_vault(
         .lock()
         .map_err(|_| "Failed to access Vault state".to_string())?;
 
-    let opened_vault = vault_state::OpenVault {
-        id: opened.id.clone(),
-        name: opened.name.clone(),
-        path: opened.path.clone(),
-    };
-
     *vault = Some(opened_vault.clone());
 
     {
@@ -132,7 +137,10 @@ fn open_vault(
             .lock()
             .map_err(|_| "Failed to access unlocked Vaults state".to_string())?;
 
-        if !unlocked_vaults.iter().any(|vault| vault.path == opened_vault.path) {
+        if !unlocked_vaults
+            .iter()
+            .any(|vault| vault.path == opened_vault.path)
+        {
             unlocked_vaults.push(opened_vault.clone());
         }
     }
@@ -198,6 +206,7 @@ fn restore_last_vault(
             id: opened.id.clone(),
             name: opened.name.clone(),
             path: opened.path.clone(),
+            encryption_key: opened.encryption_key,
         };
 
         {
@@ -227,9 +236,7 @@ fn restore_last_vault(
 }
 
 #[tauri::command]
-fn close_vault(
-    state: tauri::State<'_, vault_state::VaultState>,
-) -> Result<Option<String>, String> {
+fn close_vault(state: tauri::State<'_, vault_state::VaultState>) -> Result<Option<String>, String> {
     let mut vault_guard = state
         .vault
         .lock()
@@ -265,6 +272,135 @@ fn close_vault(
     });
 
     Ok(None)
+}
+
+#[tauri::command]
+fn list_vault_contents(
+    vault_path: String,
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<vault::VaultContents, String> {
+    let vault = state
+        .vault
+        .lock()
+        .map_err(|_| "Failed to access Vault state".to_string())?;
+
+    let opened_vault = vault
+        .as_ref()
+        .filter(|current| current.path == PathBuf::from(&vault_path))
+        .ok_or_else(|| "Vault is not currently open".to_string())?;
+
+    vault::list_vault_contents(vault_path, &opened_vault.encryption_key)
+}
+
+#[tauri::command]
+fn get_password_secret(
+    vault_path: String,
+    password_id: String,
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<String, String> {
+    let vault = state
+        .vault
+        .lock()
+        .map_err(|_| "Failed to access Vault state".to_string())?;
+
+    let opened_vault = vault
+        .as_ref()
+        .filter(|current| current.path == PathBuf::from(&vault_path))
+        .ok_or_else(|| "Vault is not currently open".to_string())?;
+
+    vault::get_password_secret(vault_path, password_id, &opened_vault.encryption_key)
+}
+
+#[tauri::command]
+fn create_folder(
+    vault_path: String,
+    parent_id: Option<String>,
+    name: String,
+) -> Result<vault::VaultFolder, String> {
+    vault::create_folder(vault_path, parent_id, name)
+}
+
+#[tauri::command]
+fn move_file(
+    vault_path: String,
+    file_id: String,
+    target_folder_id: Option<String>,
+) -> Result<(), String> {
+    vault::move_file(vault_path, file_id, target_folder_id)
+}
+
+#[tauri::command]
+fn add_note(
+    vault_path: String,
+    title: String,
+    content: String,
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<vault::VaultNote, String> {
+    let vault = state
+        .vault
+        .lock()
+        .map_err(|_| "Failed to access Vault state".to_string())?;
+
+    let opened_vault = vault
+        .as_ref()
+        .filter(|current| current.path == PathBuf::from(&vault_path))
+        .ok_or_else(|| "Vault is not currently open".to_string())?;
+
+    vault::add_note(vault_path, title, content, &opened_vault.encryption_key)
+}
+
+#[tauri::command]
+fn add_password(
+    vault_path: String,
+    title: String,
+    username: Option<String>,
+    secret: String,
+    notes: Option<String>,
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<vault::VaultPassword, String> {
+    let vault = state
+        .vault
+        .lock()
+        .map_err(|_| "Failed to access Vault state".to_string())?;
+
+    let opened_vault = vault
+        .as_ref()
+        .filter(|current| current.path == PathBuf::from(&vault_path))
+        .ok_or_else(|| "Vault is not currently open".to_string())?;
+
+    vault::add_password(
+        vault_path,
+        title,
+        username,
+        secret,
+        notes,
+        &opened_vault.encryption_key,
+    )
+}
+
+#[tauri::command]
+fn add_file(
+    vault_path: String,
+    source_path: String,
+    folder_id: Option<String>,
+    state: tauri::State<'_, vault_state::VaultState>,
+) -> Result<vault::VaultFile, String> {
+    let vault = state
+        .vault
+        .lock()
+        .map_err(|_| "Failed to access Vault state".to_string())?;
+
+    let opened_vault = vault
+        .as_ref()
+        .filter(|current| current.path == PathBuf::from(&vault_path))
+        .ok_or_else(|| "Vault is not currently open".to_string())?;
+
+    vault::add_file(
+        vault_path,
+        source_path,
+        folder_id,
+        &opened_vault.encryption_key,
+    )
 }
 
 #[tauri::command]
@@ -311,9 +447,7 @@ fn get_saved_vaults(app: tauri::AppHandle) -> Result<Vec<app_database::AppVault>
 }
 
 #[tauri::command]
-fn clear_pending_unlock(
-    state: tauri::State<'_, vault_state::VaultState>,
-) -> Result<(), String> {
+fn clear_pending_unlock(state: tauri::State<'_, vault_state::VaultState>) -> Result<(), String> {
     let mut pending_unlock = state
         .pending_unlock
         .lock()
@@ -348,6 +482,13 @@ pub fn run() {
             open_vault,
             close_vault,
             get_open_vault,
+            list_vault_contents,
+            get_password_secret,
+            create_folder,
+            move_file,
+            add_note,
+            add_password,
+            add_file,
             verify_vault_password,
             is_vault_password_protected,
             get_pending_unlock,
