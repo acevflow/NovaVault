@@ -41,7 +41,7 @@ pub mod recovery;
 pub mod slots;
 
 pub use aead::{NONCE_LEN, OVERHEAD, TAG_LEN, decrypt, encrypt};
-pub use error::{CryptoError, Result};
+pub use error::{CryptoError, Result, VaultError, VaultResult};
 pub use kdf::{KdfParams, derive_key};
 pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};
 pub use recovery::RecoveryCode;

@@ -5,6 +5,7 @@
 //! authentication failure during decryption maps to the single
 //! [`CryptoError::Decryption`] variant, whether the key was wrong, the
 //! ciphertext was tampered with or the associated data did not match.
+//! File-level failures use [`VaultError`].
 
 use thiserror::Error;
 
@@ -75,6 +76,75 @@ pub enum CryptoError {
 /// Convenience alias for results of cryptographic operations.
 pub type Result<T> = core::result::Result<T, CryptoError>;
 
+/// Errors returned when creating, opening, editing or saving a vault file.
+///
+/// Like [`CryptoError`], no variant carries secret material or bytes read
+/// from the file. Failures that could reveal whether the secret or the file
+/// was at fault while unlocking are folded into
+/// [`VaultError::InvalidCredentials`].
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum VaultError {
+    /// Reading or writing the vault file failed.
+    #[error("vault file I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// The file does not start with the NovaVault magic bytes.
+    #[error("not a NovaVault vault file")]
+    NotAVault,
+
+    /// The file uses a format version this build cannot read.
+    #[error("unsupported vault format version {found}")]
+    UnsupportedVersion {
+        /// The version found in the file header.
+        found: u16,
+    },
+
+    /// The file declares an authenticated encryption algorithm this build
+    /// does not know.
+    #[error("unsupported encryption algorithm identifier {id}")]
+    UnsupportedAlgorithm {
+        /// The algorithm identifier found in the file header.
+        id: u8,
+    },
+
+    /// The file is structurally invalid or failed an integrity check.
+    ///
+    /// `reason` is a static description; it never contains file contents.
+    #[error("corrupted vault file: {reason}")]
+    Corrupted {
+        /// What is wrong with the file.
+        reason: &'static str,
+    },
+
+    /// The master password or recovery code is wrong, or the key slot is
+    /// corrupted. These cases are intentionally indistinguishable.
+    #[error("wrong password or recovery code, or corrupted key slot")]
+    InvalidCredentials,
+
+    /// No item with the requested identifier exists in the vault.
+    #[error("item not found")]
+    ItemNotFound,
+
+    /// A vault file already exists at the target path.
+    #[error("a file already exists at the vault path")]
+    AlreadyExists,
+
+    /// An item cannot be stored, for example because it is too large.
+    #[error("invalid item: {reason}")]
+    InvalidItem {
+        /// Why the item was rejected.
+        reason: &'static str,
+    },
+
+    /// A cryptographic operation failed outside of unlocking.
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
+}
+
+/// Convenience alias for results of vault file operations.
+pub type VaultResult<T> = core::result::Result<T, VaultError>;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,5 +156,19 @@ mod tests {
             CryptoError::Decryption.to_string(),
             "decryption failed: wrong key or corrupted data"
         );
+    }
+
+    #[test]
+    fn unlock_failure_message_is_generic() {
+        assert_eq!(
+            VaultError::InvalidCredentials.to_string(),
+            "wrong password or recovery code, or corrupted key slot"
+        );
+    }
+
+    #[test]
+    fn crypto_errors_convert() {
+        let error = VaultError::from(CryptoError::Random);
+        assert!(matches!(error, VaultError::Crypto(CryptoError::Random)));
     }
 }
