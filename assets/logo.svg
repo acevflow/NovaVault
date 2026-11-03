@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 160" width="560" height="160" role="img" aria-label="NovaVault logo">
+  <title>NovaVault</title>
+  <defs>
+    <linearGradient id="nv-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="nv-text" gradientUnits="userSpaceOnUse" x1="160" y1="0" x2="540" y2="0">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+  <!-- Vault: hexagonal outline -->
+  <polygon points="80,22 130,51 130,109 80,138 30,109 30,51" fill="none" stroke="url(#nv-grad)" stroke-width="7" stroke-linejoin="round"/>
+  <!-- Nova: four-point star at the core -->
+  <path d="M80 50 L87 73 L110 80 L87 87 L80 110 L73 87 L50 80 L73 73 Z" fill="url(#nv-grad)"/>
+  <!-- Wordmark -->
+  <text x="160" y="97" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-1" fill="url(#nv-text)">NovaVault</text>
+</svg>

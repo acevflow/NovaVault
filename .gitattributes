@@ -1,0 +1,29 @@
+# Normalize line endings to LF in the repository and working tree.
+* text=auto eol=lf
+
+# Windows scripts require CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Text assets
+*.svg   text
+
+# Binary assets
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.pdf   binary
+
+# Generated lockfiles: keep diffs quiet and exclude from language stats.
+Cargo.lock          -diff linguist-generated
+package-lock.json   -diff linguist-generated
+pnpm-lock.yaml      -diff linguist-generated
+yarn.lock           -diff linguist-generated
