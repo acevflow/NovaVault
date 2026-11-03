@@ -59,8 +59,6 @@ impl SecretKey {
 
     /// Returns the raw key bytes. Crate-internal so key material never
     /// crosses the public API.
-    // Used by the AEAD module, which lands in a later commit.
-    #[allow(dead_code)]
     pub(crate) fn expose(&self) -> &[u8; KEY_LEN] {
         self.0.expose_secret()
     }
