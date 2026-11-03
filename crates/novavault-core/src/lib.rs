@@ -13,8 +13,26 @@
 //! - Secret material is held in `secrecy`/`zeroize` types and never logged.
 //! - Raw key material never crosses the public API towards the UI.
 //!
-//! The crate is currently an empty scaffold; functionality lands in later
-//! releases.
+//! Currently implemented: the cryptographic primitives the rest of the core
+//! builds on.
+//!
+//! - [`kdf`]: Argon2id key derivation with validated [`KdfParams`].
+//! - [`aead`]: XChaCha20-Poly1305 [`encrypt`] / [`decrypt`] with a fresh
+//!   random nonce per message.
+//! - [`keys`]: the zeroizing [`SecretKey`] type and [`Salt`].
+//! - [`error`]: the typed [`CryptoError`].
+//!
+//! Key slots and the vault format land in later releases.
 
 // No unsafe code in the trusted core, ever.
 #![forbid(unsafe_code)]
+
+pub mod aead;
+pub mod error;
+pub mod kdf;
+pub mod keys;
+
+pub use aead::{NONCE_LEN, OVERHEAD, TAG_LEN, decrypt, encrypt};
+pub use error::{CryptoError, Result};
+pub use kdf::{KdfParams, derive_key};
+pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};

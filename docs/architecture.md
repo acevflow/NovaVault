@@ -3,7 +3,7 @@
 This document describes how NovaVault is put together: its components, the layers they form, how data moves between them, and why every cryptographic operation lives in Rust.
 
 > [!NOTE]
-> NovaVault is pre-alpha. The project scaffold is in place, but the core is not implemented yet. This document describes the intended design. Details will be refined as the core implementation is written, and this page will be kept in sync with the code.
+> NovaVault is pre-alpha. The project scaffold and the core's cryptographic primitives (see [Cryptography and dependencies](#cryptography-and-dependencies)) are in place; key slots, the vault format and the app flows are not implemented yet. This document describes the intended design. Details will be refined as the core implementation is written, and this page will be kept in sync with the code.
 
 ## Goals
 
@@ -104,6 +104,49 @@ With the vault unlocked, the core derives a new wrapping key from the new secret
 - **Audited primitives.** The RustCrypto crates (or `age`) provide reviewed implementations of Argon2id and AEAD ciphers. Using them from one place avoids mixing implementations across languages.
 - **One testable core.** Crypto, format and key-slot logic can be unit-tested with known vectors without a UI or a running app, and reused by future tools (for example a format validator).
 - **Smaller review scope.** Auditors and contributors can focus on one crate to verify the security properties of the whole application.
+
+## Cryptography and dependencies
+
+The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error` modules). Everything else in the core is built on these few functions.
+
+### Algorithms and parameters
+
+| Purpose | Choice | Parameters |
+| ------- | ------ | ---------- |
+| Key derivation | Argon2id, version 0x13 (RFC 9106) | Defaults: 64 MiB memory, 3 iterations, 4 lanes, 16-byte random salt, 32-byte output (RFC 9106 second recommended option). Accepted range: memory 19 MiB to 4 GiB, iterations 2 to 64, lanes 1 to 16. |
+| Authenticated encryption | XChaCha20-Poly1305 | 256-bit key, 192-bit random nonce per message, 128-bit tag. Sealed message layout: `nonce (24) ‖ ciphertext ‖ tag (16)`. |
+| Randomness | OS CSPRNG via `getrandom` | Keys, salts and nonces. |
+
+- **KDF bounds.** Argon2id parameters are stored in each key slot, so on unlock they are untrusted input. The lower bound (the OWASP minimum of 19 MiB and 2 iterations) stops a tampered file from silently downgrading protection; the upper bound stops a crafted file from forcing a huge allocation or an extremely long unlock. Bounds are checked again inside `derive_key`, so unchecked values cannot reach Argon2.
+- **Nonces.** Every encryption draws a fresh random nonce. Callers cannot supply one; the internal function that accepts a fixed nonce exists only for known-answer tests.
+- **Errors.** Every decryption failure (wrong key, modified nonce, ciphertext or tag, different associated data) returns the same `CryptoError::Decryption`, so the error reveals nothing about the cause. Error variants never contain secret data.
+- **Key material in memory.** `SecretKey` holds its 32 bytes in a `secrecy::SecretBox`, which zeroizes them on drop and redacts them in `Debug`. It does not implement `Clone`, and its bytes are only readable inside the crate. Derived keys and decrypted plaintext are written straight into zeroizing storage, and the cipher's internal key copy is wiped too (the `zeroize` feature of `chacha20poly1305`).
+
+### Why XChaCha20-Poly1305 rather than AES-GCM
+
+- **Random nonces are safe.** With a 192-bit nonce the chance of a repeat is negligible even after far more messages than a vault will ever encrypt under one key. AES-GCM has a 96-bit nonce, for which NIST SP 800-38D caps random nonces at 2^32 messages per key. A nonce repeat in either cipher is catastrophic, so the extended nonce removes a whole class of bugs (counters, persisted nonce state) from the design.
+- **Constant time everywhere.** ChaCha20 and Poly1305 are fast and constant-time in plain software. AES-GCM is only fast and side-channel resistant with hardware AES and carry-less multiply instructions, which would be an assumption about every user's machine on Windows, macOS and Linux.
+- **Simplicity.** No nonce-misuse workaround or per-message key derivation layer is needed, and the same construction is used by other well-reviewed tools (for example libsodium's `crypto_aead_xchacha20poly1305_ietf`).
+- **Trade-off accepted.** XChaCha20-Poly1305 is specified by an IETF draft (draft-irtf-cfrg-xchacha) rather than a finished RFC. It is a straightforward composition of RFC 8439 ChaCha20-Poly1305 with HChaCha20, and the implementation is tested against the draft's vector.
+
+### Dependencies
+
+Every cryptography-related crate and why it is used:
+
+| Crate | Purpose | Justification |
+| ----- | ------- | ------------- |
+| [`argon2`](https://crates.io/crates/argon2) | Argon2id | RustCrypto, pure Rust, widely used. Default features are disabled (no `password-hash` string format, which the vault does not need); `zeroize` is enabled to wipe its internal memory. |
+| [`chacha20poly1305`](https://crates.io/crates/chacha20poly1305) | XChaCha20-Poly1305 | RustCrypto; its ChaCha20Poly1305 implementation has had an independent security audit (NCC Group). Default features are disabled; only `zeroize` is enabled. |
+| [`getrandom`](https://crates.io/crates/getrandom) | OS CSPRNG | The standard minimal interface to the operating system's random number generator, already a dependency of the RustCrypto crates. Used directly so random bytes can be written straight into zeroizing buffers. |
+| [`secrecy`](https://crates.io/crates/secrecy) | Secret wrappers | Prevents accidental exposure (no `Debug` leak, explicit `expose_secret`) and zeroizes on drop. |
+| [`zeroize`](https://crates.io/crates/zeroize) | Memory wiping | Clears buffers in a way the compiler cannot optimize away. Also used by `secrecy` and the RustCrypto crates. |
+| [`thiserror`](https://crates.io/crates/thiserror) | Error types | Derive macro only, no runtime code. Not cryptographic; listed for completeness. |
+
+### Test vectors
+
+- Argon2id: RFC 9106 §5.3 (with secret and associated data) and the reference implementation's `password`/`somesalt` vector, both run through the same parameter wiring as production derivation.
+- XChaCha20-Poly1305: draft-irtf-cfrg-xchacha-03 Appendix A.3.1.
+- Tamper detection: every single-bit flip of a sealed message, truncation, appended bytes, a wrong key and wrong associated data are all rejected.
 
 ## Related documents
 

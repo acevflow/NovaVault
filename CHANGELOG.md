@@ -30,9 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App icons generated from a new square emblem (`assets/icon.svg`).
 - React + TypeScript UI scaffold in `ui/` built with Vite: strict TypeScript, ESLint (type-checked strict rules, React hooks, jsx-a11y), Prettier and Vitest with Testing Library.
 - Single full local check, `npm run check`, covering formatting, linting, typechecking, tests and builds for the UI and the Rust workspace; documented in `docs/development.md`.
+- Core cryptographic primitives in `novavault-core`:
+  - Argon2id key derivation (`derive_key`) with validated `KdfParams`: RFC 9106 defaults (64 MiB, 3 iterations, 4 lanes) and enforced minimum and maximum bounds.
+  - XChaCha20-Poly1305 `encrypt`/`decrypt` with a fresh random 192-bit nonce per message and a single generic error for every authentication failure.
+  - Zeroizing `SecretKey` (via `secrecy`) and `Salt` types; random bytes come from the OS CSPRNG.
+  - Typed `CryptoError` (via `thiserror`) with no secret data in any variant.
+  - Unit tests with RFC 9106, Argon2 reference and XChaCha20-Poly1305 draft test vectors, plus tamper-detection tests.
+- Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed
 
+- Vault format specification: AEAD fixed to XChaCha20-Poly1305; Argon2id bounds and salt, nonce and wrapped-key sizes filled in.
 - CI builds the UI before the Rust checks (the Tauri shell embeds the built UI) and checks UI formatting; Dependabot also tracks the root npm package (Tauri CLI).
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main

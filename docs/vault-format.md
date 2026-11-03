@@ -33,12 +33,12 @@ Design goals:
 
 | Purpose | Algorithm | Notes |
 | ------- | --------- | ----- |
-| Key derivation | Argon2id (RFC 9106) | Parameters stored per key slot. Minimum values enforced by readers: *TBF*. |
-| Authenticated encryption | XChaCha20-Poly1305 **or** AES-256-GCM | The choice for format version 1 is *to be finalized in the core implementation*. The header records the algorithm identifier so the decision is explicit in every file. |
+| Key derivation | Argon2id v0x13 (RFC 9106) | Parameters stored per key slot. Readers MUST reject memory below 19 MiB or above 4 GiB, iterations below 2 or above 64, and parallelism below 1 or above 16. Writers use 64 MiB, 3 iterations and 4 lanes by default. Output is 32 bytes. |
+| Authenticated encryption | XChaCha20-Poly1305 (draft-irtf-cfrg-xchacha) | 256-bit key, 24-byte random nonce, 16-byte tag. Rationale in [architecture.md](architecture.md#why-xchacha20-poly1305-rather-than-aes-gcm). The header records the algorithm identifier so the choice is explicit in every file. |
 | Vault key | 256-bit random key | Generated once at vault creation. |
 | Randomness | OS CSPRNG | Used for the vault key, salts, nonces and the recovery code. |
 
-No custom primitives are used. Crate choices and their justification will be documented separately in `docs/`.
+No custom primitives are used. Crate choices and their justification are documented in [architecture.md](architecture.md#dependencies).
 
 ## 4. File layout overview
 
@@ -93,12 +93,12 @@ Either slot alone is sufficient to recover the vault key.
 | Field | Size | Description |
 | ----- | ---- | ----------- |
 | `slot_type` | *TBF* | `password` or `recovery`. |
-| `kdf_salt` | 16 to 32 bytes *(TBF)* | Random per-slot salt. A new salt MUST be generated whenever the slot is rewritten. |
+| `kdf_salt` | 16 bytes | Random per-slot salt. A new salt MUST be generated whenever the slot is rewritten. |
 | `kdf_memory_kib` | *TBF* | Argon2id memory cost. |
 | `kdf_iterations` | *TBF* | Argon2id time cost. |
 | `kdf_parallelism` | *TBF* | Argon2id lanes. |
-| `nonce` | AEAD nonce size | Random nonce for wrapping. |
-| `wrapped_key` | 32 bytes + tag | Vault key encrypted under the slot's wrapping key. |
+| `nonce` | 24 bytes | Random nonce for wrapping. |
+| `wrapped_key` | 48 bytes (32 + 16-byte tag) | Vault key encrypted under the slot's wrapping key. |
 
 ### 6.3 Wrapping and unwrapping
 
@@ -131,7 +131,7 @@ Each record is stored as an envelope:
 | ----- | ---- | ----------- |
 | `record_id` | 16 bytes *(TBF)* | Random, unique within the vault. |
 | `record_type` | *TBF* | One of the record types above. |
-| `nonce` | AEAD nonce size | Fresh random nonce for every write of the record. |
+| `nonce` | 24 bytes | Fresh random nonce for every write of the record. |
 | `ciphertext` | variable | AEAD encryption of the serialized record payload, including the tag. |
 
 ```text
