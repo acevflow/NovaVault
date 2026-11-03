@@ -9,7 +9,7 @@
 //!   they are easily confused with each other.
 //! - **Entropy:** 30 random symbols of 5 bits each, 150 bits in total.
 //! - **Checksum:** 2 extra symbols that catch typos before the slow key
-//!   derivation runs (see [`checksum`]).
+//!   derivation runs (see the vault format specification, §9).
 //! - **Display:** the 32 symbols in 8 groups of 4 separated by dashes, for
 //!   example `ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789`.
 //!
