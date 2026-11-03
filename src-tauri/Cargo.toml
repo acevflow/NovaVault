@@ -1,0 +1,18 @@
+[package]
+name = "novavault"
+description = "NovaVault desktop app: thin Tauri 2 shell around novavault-core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[lints]
+workspace = true

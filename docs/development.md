@@ -2,9 +2,6 @@
 
 How to set up a development environment for NovaVault on Windows, macOS and Linux, which commands to run, and where things live in the repository. Contribution rules (branches, commits, code style, review) are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-> [!NOTE]
-> **Partly coming soon.** The application scaffolding has not been committed yet. The prerequisites below are final; commands marked *coming soon* will be filled in with the first code drop.
-
 ## Prerequisites (all platforms)
 
 - **Git.**
@@ -79,24 +76,47 @@ cd NovaVault
 
 ## Commands
 
-| Task | Command | Status |
-| ---- | ------- | ------ |
-| Install UI dependencies | *TBD* | Coming soon |
-| Full local check (format, lint, test for Rust and TypeScript) | *TBD, a single command* | Coming soon |
-| Run the app in development mode | *TBD (Tauri dev)* | Coming soon |
-| Build a release bundle | *TBD (Tauri build)* | Coming soon |
-| Rust formatting | `cargo fmt --all` | Once the workspace exists |
-| Rust lints | `cargo clippy --all-targets -- -D warnings` | Once the workspace exists |
-| Rust tests | `cargo test --workspace` | Once the workspace exists |
+All commands run from the repository root unless noted.
 
-The full local check is the one command to run before every push. CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the same checks on Windows, macOS and Linux; steps for a component (Rust workspace, UI) are skipped until that component exists in the repository.
+| Task | Command |
+| ---- | ------- |
+| Install the Tauri CLI (root dev dependency) | `npm ci` |
+| Install UI dependencies | `npm ci --prefix ui` |
+| **Full local check** (format, lint, typecheck, test, build for UI and Rust) | `npm run check` |
+| Run the app in development mode (starts Vite and the Tauri shell) | `npm run dev` |
+| Build a release bundle | `npm run build` |
+| Format the UI | `npm run format --prefix ui` |
+| Run UI tests in watch mode | `npx --prefix ui vitest` |
+| Rust formatting | `cargo fmt --all` |
+| Rust lints | `cargo clippy --workspace --all-targets -- -D warnings` |
+| Rust tests | `cargo test --workspace` |
+
+### The full local check
+
+`npm run check` runs [`scripts/check.mjs`](../scripts/check.mjs), a dependency-free Node script that works the same on every OS. It runs, in order, stopping at the first failure:
+
+1. UI: `npm ci` (only if `ui/node_modules` is missing), Prettier check, ESLint, `tsc` typecheck, Vitest, Vite build.
+2. Rust: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`.
+
+The UI is built first because the Tauri shell embeds `ui/dist` at compile time; Rust commands that compile `src-tauri` fail if `ui/dist` does not exist.
+
+Run it before every push. CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the same steps, in the same order, on Windows, macOS and Linux.
+
+## Security configuration
+
+- **Content Security Policy:** `app.security.csp` in [`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json). The production policy allows only same-origin resources and the Tauri IPC channel (no inline scripts, no remote origins, no framing). `devCsp` additionally allows the Vite dev server and its inline HMR code, and applies only to `npm run dev`.
+- **Capabilities:** [`src-tauri/capabilities/default.json`](../src-tauri/capabilities/default.json) grants the main window no permissions. Add a permission only when a feature needs it, and justify it in the pull request.
+- `withGlobalTauri` is off and `freezePrototype` is on, which reduces what injected script could reach.
 
 ## Project layout
 
 ```text
+Cargo.toml               Rust workspace (shared lints and package metadata)
+package.json             Tauri CLI and the root scripts (check, dev, build)
+scripts/check.mjs        full local check
 crates/novavault-core/   Rust library: crypto, vault format, key slots (UI-independent)
 src-tauri/               thin Tauri 2 shell: commands, OS hooks, CSP, capabilities
-ui/                      React + TypeScript front end
+ui/                      React + TypeScript front end (Vite, ESLint, Prettier, Vitest)
 docs/                    architecture, threat model, vault format, this guide
 assets/                  logo and other static assets
 .github/                 CI workflow, Dependabot, issue and PR templates
@@ -119,5 +139,6 @@ See [architecture.md](architecture.md) for how these components interact.
 ## Troubleshooting
 
 - **Linux: `webkit2gtk-4.1` not found.** Your distribution may be too old to ship WebKitGTK 4.1. Tauri 2 requires it; use a recent release.
+- **Windows: `os error 4551` ("an Application Control policy has blocked this file") when running a build script.** Windows Smart App Control or a WDAC policy is blocking the unsigned executables that Cargo compiles into `target/`. Retrying sometimes helps. Otherwise Smart App Control has to be turned off (Windows Security, App & browser control), and Windows does not let you turn it back on without a reset, so decide for yourself. CI is not affected.
 - **Windows: linker `link.exe` not found.** The C++ Build Tools workload is missing or the GNU toolchain is active. Run `rustup default stable-msvc`.
 - **Anything else:** check the [Tauri prerequisites](https://tauri.app/start/prerequisites/) and open an issue if the problem is specific to NovaVault.

@@ -1,0 +1,4 @@
+# `unwrap()`/`expect()` are denied in production code (see Cargo.toml) but are
+# idiomatic in tests, where a panic is the desired failure mode.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
