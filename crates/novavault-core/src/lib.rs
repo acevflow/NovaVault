@@ -20,9 +20,15 @@
 //! - [`aead`]: XChaCha20-Poly1305 [`encrypt`] / [`decrypt`] with a fresh
 //!   random nonce per message.
 //! - [`keys`]: the zeroizing [`SecretKey`] type and [`Salt`].
+//! - [`recovery`]: human-readable emergency [`RecoveryCode`]s with a
+//!   typo-detecting checksum.
+//! - [`slots`]: [`KeySlot`]s wrapping the vault key under the master
+//!   password or the recovery code, and the [`KeySlots`] table with the
+//!   create, unlock, change-password and regenerate-recovery-code
+//!   operations.
 //! - [`error`]: the typed [`CryptoError`].
 //!
-//! Key slots and the vault format land in later releases.
+//! The rest of the vault format lands in later releases.
 
 // No unsafe code in the trusted core, ever.
 #![forbid(unsafe_code)]
@@ -31,8 +37,12 @@ pub mod aead;
 pub mod error;
 pub mod kdf;
 pub mod keys;
+pub mod recovery;
+pub mod slots;
 
 pub use aead::{NONCE_LEN, OVERHEAD, TAG_LEN, decrypt, encrypt};
 pub use error::{CryptoError, Result};
 pub use kdf::{KdfParams, derive_key};
 pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};
+pub use recovery::RecoveryCode;
+pub use slots::{KeySlot, KeySlots, SLOT_LEN, SlotType};

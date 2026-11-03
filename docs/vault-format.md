@@ -2,12 +2,12 @@
 
 | | |
 | --- | --- |
-| **Status** | Draft skeleton. Not stable. |
+| **Status** | Draft. Key slots and recovery code specified; other sections are a skeleton. Not stable. |
 | **Format version** | 0 (pre-release) |
 | **Applies to** | NovaVault pre-1.0 development builds |
 
 > [!WARNING]
-> This is a skeleton of the public specification. Structure and intent are described here, but field sizes, encodings, identifiers and parameter values are **to be finalized in the core implementation** (`crates/novavault-core`). The format may change incompatibly until version 1.0. Do not rely on it for real data.
+> This is a draft of the public specification. Key slots (§6) and the recovery code (§9) are specified; for the other sections, structure and intent are described here, but field sizes, encodings, identifiers and parameter values are **to be finalized in the core implementation** (`crates/novavault-core`). The format may change incompatibly until version 1.0. Do not rely on it for real data.
 
 ## 1. Scope and goals
 
@@ -90,32 +90,47 @@ Either slot alone is sufficient to recover the vault key.
 
 ### 6.2 Slot structure
 
-| Field | Size | Description |
-| ----- | ---- | ----------- |
-| `slot_type` | *TBF* | `password` or `recovery`. |
-| `kdf_salt` | 16 bytes | Random per-slot salt. A new salt MUST be generated whenever the slot is rewritten. |
-| `kdf_memory_kib` | *TBF* | Argon2id memory cost. |
-| `kdf_iterations` | *TBF* | Argon2id time cost. |
-| `kdf_parallelism` | *TBF* | Argon2id lanes. |
-| `nonce` | 24 bytes | Random nonce for wrapping. |
-| `wrapped_key` | 48 bytes (32 + 16-byte tag) | Vault key encrypted under the slot's wrapping key. |
+A key slot is exactly 101 bytes. Integers are unsigned little-endian.
+
+| Offset | Field | Size | Description |
+| ------ | ----- | ---- | ----------- |
+| 0 | `slot_type` | 1 byte | `0x01` = `password`, `0x02` = `recovery`. Readers MUST reject any other value. |
+| 1 | `kdf_salt` | 16 bytes | Random per-slot salt. A new salt MUST be generated whenever the slot is rewritten. |
+| 17 | `kdf_memory_kib` | 4 bytes (u32) | Argon2id memory cost in KiB. |
+| 21 | `kdf_iterations` | 4 bytes (u32) | Argon2id time cost. |
+| 25 | `kdf_parallelism` | 4 bytes (u32) | Argon2id lanes. |
+| 29 | `nonce` | 24 bytes | Random XChaCha20-Poly1305 nonce for wrapping. |
+| 53 | `wrapped_key` | 48 bytes (32 + 16-byte tag) | Vault key encrypted under the slot's wrapping key, followed by the Poly1305 tag. |
+
+`slot_metadata` is bytes 0–28 (`slot_type` to `kdf_parallelism`, 29 bytes). Readers MUST reject a slot whose length is not exactly 101 bytes or whose KDF parameters are outside the bounds in §3, before running Argon2id.
+
+The key slot table holds exactly one `password` slot followed by one `recovery` slot. How the table is framed inside the file (and how `slot_count` in the header relates to it) is *to be finalized with the header*.
 
 ### 6.3 Wrapping and unwrapping
 
 ```text
 wrapping_key = Argon2id(secret, kdf_salt, memory, iterations, parallelism, out_len = 32)
-wrapped_key  = AEAD_Encrypt(wrapping_key, nonce, vault_key, ad = header || slot_metadata)
+nonce        = random(24)
+wrapped_key  = XChaCha20-Poly1305_Encrypt(wrapping_key, nonce, vault_key, ad = header || slot_metadata)
 ```
 
-`slot_metadata` is every slot field except `nonce` and `wrapped_key`. Unwrapping performs the same derivation and `AEAD_Decrypt`; an authentication failure MUST be reported as a single generic error that does not distinguish a wrong secret from a corrupted slot.
+`header` is the authenticated encoding of the vault header (§5). Because `slot_metadata` has a fixed length, the concatenation is unambiguous. Binding both into the associated data means changing a slot's type, salt or KDF parameters, or moving a slot to another vault, makes unwrapping fail.
 
-Normalization of the master password (for example Unicode NFC) before derivation is *to be finalized in the core implementation*.
+Unwrapping performs the same derivation and `XChaCha20-Poly1305_Decrypt`. An authentication failure MUST be reported as a single generic error that does not distinguish a wrong secret, a wrong header or a corrupted slot.
 
-### 6.4 Rotation
+The `secret` input is:
 
-- **Changing the master password** derives a new wrapping key with a fresh salt and nonce and replaces the `password` slot. The vault key, records and attachments are unchanged.
-- **Regenerating the recovery code** does the same for the `recovery` slot. The previous recovery code no longer opens the vault once the new file is written.
-- KDF parameters MAY be increased during either operation.
+- **`password` slot:** the UTF-8 bytes of the master password, exactly as entered. Unicode normalization (for example NFC) is *to be finalized before format version 1*; until then, a password typed with a different Unicode composition will not match.
+- **`recovery` slot:** the 32 ASCII bytes of the recovery code in canonical form (§9): upper case, no separators, checksum symbols included.
+
+### 6.4 Operations
+
+- **Create:** generate a random 256-bit vault key and a new recovery code, then write a `password` slot and a `recovery` slot that both wrap the vault key.
+- **Unlock:** unwrap the `password` slot with the master password, or the `recovery` slot with the recovery code. Both yield the same vault key.
+- **Change the master password:** with the vault key from any unlock (including one with the recovery code, for a forgotten password), write a new `password` slot with a fresh salt and nonce. The vault key, the `recovery` slot, records and attachments are unchanged.
+- **Regenerate the recovery code:** generate a new code and write a new `recovery` slot with a fresh salt and nonce. The previous code no longer opens the vault once the new file is written. The `password` slot is unchanged.
+- KDF parameters MAY be increased during either rotation.
+- A new slot is fully computed before it replaces the old one, and the file is written atomically (§4), so a failed rotation leaves the vault openable with the previous secrets.
 
 ## 7. Encrypted records
 
@@ -152,10 +167,15 @@ Timestamps and other metadata that are not needed before decryption SHOULD be st
 
 ## 9. Recovery code
 
-- Generated from the OS CSPRNG with at least 128 bits of entropy *(exact length TBF)*.
-- Presented in a human-readable form: groups of characters from an unambiguous alphabet (excluding look-alikes such as `0`/`O` and `1`/`l`), separated by dashes, with a checksum to catch typos. *Alphabet, grouping and checksum are to be finalized in the core implementation.*
-- Shown once at creation and at each regeneration. The user MUST confirm they saved it before the operation completes.
-- Before derivation, input is normalized (case and separators removed) so formatting differences do not matter.
+- **Alphabet:** the 32 symbols `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`, where symbol `i` has value `i`. The look-alikes `0`, `1`, `O` and `I` are excluded.
+- **Random part:** 30 symbols. Each symbol is the low 5 bits of a byte from the OS CSPRNG; since 256 is a multiple of 32 this is uniform, giving 150 bits of entropy.
+- **Checksum:** with `v[0..30]` the values of the random symbols, `c = (Σ (i + 1) · v[i]) mod 1021`, appended as two symbols with values `c / 32` and `c mod 32`. Because 1021 is a prime larger than every weight and every symbol difference, the checksum detects every single-symbol substitution and every swap of two adjacent symbols in the random part, and every single-symbol substitution in the checksum. It is a typo check, not a security mechanism.
+- **Canonical form:** the 32 symbols (random part then checksum), upper case, no separators. This is the Argon2id input (§6.3).
+- **Display form:** the canonical form in 8 groups of 4 symbols separated by `-`, for example `ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789`.
+- **Parsing:** input is upper-cased and `-` and whitespace are removed. Readers MUST then reject input that does not have exactly 32 symbols, contains a character outside the alphabet, or fails the checksum, before running Argon2id.
+- Shown once at creation and at each regeneration. The user MUST confirm they saved it before the operation completes (an application-level step). The vault never stores the code itself.
+
+Test vector: a random part of 30 × `3` (value 1) has checksum `465 = 14 · 32 + 17`, so the code is `3333-3333-3333-3333-3333-3333-3333-33GK`.
 
 ## 10. Versioning and compatibility
 
@@ -182,3 +202,4 @@ Known-answer test vectors for key derivation, slot unwrapping, record decryption
 | Version | Date | Change |
 | ------- | ---- | ------ |
 | 0 (draft) | 2026-11-03 | Initial skeleton. |
+| 0 (draft) | 2026-11-03 | Key slot encoding, wrapping associated data, slot operations and recovery code format specified. |

@@ -107,7 +107,7 @@ With the vault unlocked, the core derives a new wrapping key from the new secret
 
 ## Cryptography and dependencies
 
-The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error` modules). Everything else in the core is built on these few functions.
+The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error` modules). Everything else in the core is built on these few functions: the `recovery` module (recovery codes) and the `slots` module (key slots and their operations) use only `derive_key`, `encrypt` and `decrypt`, and add no dependencies.
 
 ### Algorithms and parameters
 
