@@ -3,7 +3,8 @@
 //! Every item has a random [`ItemId`], a title, creation and update
 //! timestamps and type-specific fields. Only the identifier and the
 //! [`ItemKind`] are stored in plaintext; the title, timestamps and fields
-//! form the item's payload, which is encrypted as a whole by the vault.
+//! form the item's payload, which is encrypted as a whole by the
+//! [`crate::vault`].
 //!
 //! # Payload encoding
 //!

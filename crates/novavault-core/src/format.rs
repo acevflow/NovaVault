@@ -443,6 +443,17 @@ mod tests {
     }
 
     #[test]
+    fn oversized_file_is_rejected_after_the_header_check() {
+        let f = fixture();
+        // A zeroed allocation is mapped lazily, so this stays cheap.
+        let mut file = vec![0u8; MAX_FILE_LEN + 1];
+        file[..HEADER_LEN].copy_from_slice(&f.header.to_bytes());
+        assert!(matches!(parse(&file), Err(VaultError::Corrupted { .. })));
+        file[0] = b'X';
+        assert!(matches!(parse(&file), Err(VaultError::NotAVault)));
+    }
+
+    #[test]
     fn record_ad_is_domain_separated() {
         let f = fixture();
         let id = ItemId::from_bytes([7; ITEM_ID_LEN]);
