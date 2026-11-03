@@ -25,6 +25,18 @@ updates:
       npm-minor-and-patch:
         update-types: [minor, patch]
 
+  # Root package: the Tauri CLI only.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-root-minor-and-patch:
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
