@@ -93,7 +93,8 @@ NovaVault is **pre-alpha**. Current progress toward the MVP:
 
 - [x] Repository, license and community files
 - [x] Project scaffold: Cargo workspace, Tauri 2 shell (strict CSP, minimal capabilities), React + TypeScript UI, single check command
-- [ ] Core crate: vault format, key derivation, key slots
+- [x] Core crypto primitives: Argon2id key derivation, XChaCha20-Poly1305 encryption, zeroizing key types
+- [ ] Core crate: vault format, key slots
 - [ ] Create, unlock and lock a vault
 - [ ] Passwords, notes and secrets (CRUD)
 - [ ] Encrypted file attachments

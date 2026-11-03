@@ -12,9 +12,7 @@ Design and contributor documentation for NovaVault. Start with the architecture,
 | [Vault format specification](vault-format.md) | Versioned on-disk format: header, key slots, encrypted records, attachments. Draft skeleton. |
 | [Development guide](development.md) | Setup on Windows, macOS and Linux, commands and project layout. |
 
-Planned:
-
-- **Cryptography and dependencies:** algorithms, parameters and the justification for every cryptography-related crate.
+Cryptography and dependencies (algorithms, parameters and the justification for every cryptography-related crate) are covered in [Architecture: Cryptography and dependencies](architecture.md#cryptography-and-dependencies).
 
 Related project files:
 
