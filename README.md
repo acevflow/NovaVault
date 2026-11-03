@@ -1,0 +1,118 @@
+<div align="center">
+
+<img src="assets/logo.svg" alt="NovaVault" width="420">
+
+**An open-source, local-first encrypted vault for your passwords, notes, secrets and files.**
+
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
+![Status](https://img.shields.io/badge/status-pre--alpha-orange.svg)
+![Built with Tauri 2](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB.svg)
+![Core in Rust](https://img.shields.io/badge/core-Rust-B7410E.svg)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+
+</div>
+
+---
+
+> [!WARNING]
+> NovaVault is in early development and is **not ready for real secrets**. There is no released build yet, and the vault format may change without notice until version 1.0.
+
+## Overview
+
+NovaVault is a desktop application that keeps your sensitive data in a single encrypted vault file on your own machine. It has no server, no account, no sync service and no telemetry: core features never touch the network. Everything is protected by a master password, with an emergency recovery code as a second way in.
+
+The goal is a small, auditable password manager whose security model is easy to explain and whose storage format is publicly documented.
+
+## Features
+
+Planned for the first release (MVP):
+
+- **Vault lifecycle**: create, unlock and lock a vault with a master password.
+- **Passwords, notes and secrets**: full create, read, update and delete.
+- **Encrypted file attachments** stored inside the vault.
+- **Emergency recovery code**: shown once at creation, can be regenerated at any time (invalidating the previous one).
+- **Master password change** without re-encrypting the whole vault.
+- **Auto-lock** on inactivity, system suspend and screen lock.
+- **Clipboard auto-clear** after copying a secret.
+
+Explicitly out of scope: cloud sync, browser extension or autofill, mobile apps and multi-user sharing.
+
+## Security model
+
+A short summary; the full design will be published in [`docs/`](#documentation).
+
+- **Local only.** The vault is a single file on disk. NovaVault does not need network access for any core feature.
+- **Rust owns the secrets.** All cryptography and data access live in the Rust core. The React UI never receives the vault key or any raw key material; it talks to the core through a minimal set of Tauri commands.
+- **Audited primitives only.** No custom cryptography. NovaVault relies on audited crates from the RustCrypto project (or `age`).
+- **Key derivation:** Argon2id.
+- **Authenticated encryption:** XChaCha20-Poly1305 or AES-GCM.
+- **Two key slots.** A random 256-bit vault key encrypts all data. It is stored wrapped twice: once under a key derived from the master password and once under a key derived from the recovery code. Either slot opens the vault, and changing the master password only re-wraps the vault key.
+- **Memory hygiene.** Secrets are held in `secrecy` types and wiped with `zeroize`. Secrets are never logged.
+- **Hardened shell.** Strict Content Security Policy and a minimal Tauri capability set.
+- **Open format.** The vault format is versioned and will be documented as a public specification.
+
+Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it privately.
+
+## Tech stack
+
+| Layer       | Technology                                     |
+| ----------- | ---------------------------------------------- |
+| Core        | Rust (`crates/novavault-core`)                 |
+| Shell       | [Tauri 2](https://tauri.app/) (`src-tauri`)    |
+| UI          | React + TypeScript (`ui`)                      |
+| Platforms   | Windows, macOS, Linux                          |
+
+## Building from source
+
+> [!NOTE]
+> **Coming soon.** The application code has not been committed yet. These instructions describe the intended workflow and will be finalized with the first code drop.
+
+Prerequisites (coming soon):
+
+- [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)
+- [Node.js](https://nodejs.org/) (LTS)
+- The [Tauri 2 system prerequisites](https://tauri.app/start/prerequisites/) for your operating system
+
+Build and run (coming soon):
+
+```sh
+git clone https://github.com/acevflow/NovaVault.git
+cd NovaVault
+# Install UI dependencies, run the full local check, and start the app.
+# Exact commands will be documented here once the project scaffolding lands.
+```
+
+## Project status and roadmap
+
+NovaVault is **pre-alpha**. Current progress toward the MVP:
+
+- [x] Repository, license and community files
+- [ ] Core crate: vault format, key derivation, key slots
+- [ ] Create, unlock and lock a vault
+- [ ] Passwords, notes and secrets (CRUD)
+- [ ] Encrypted file attachments
+- [ ] Emergency recovery code and master password change
+- [ ] Auto-lock on inactivity, suspend and screen lock
+- [ ] Clipboard auto-clear
+- [ ] Public vault format specification
+- [ ] CI builds and tests on Windows, macOS and Linux
+- [ ] First release
+
+See [CHANGELOG.md](CHANGELOG.md) for what has changed so far.
+
+## Documentation
+
+Project documentation will live in the `docs/` directory (not yet created). Planned pages:
+
+- **Vault format specification**: the versioned, public on-disk format.
+- **Cryptography and dependencies**: algorithms, parameters and the justification for every cryptography-related crate.
+- **Architecture**: how the Rust core, the Tauri layer and the UI fit together.
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request, and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+NovaVault is free software, released under the [GNU General Public License v3.0 or later](LICENSE).
