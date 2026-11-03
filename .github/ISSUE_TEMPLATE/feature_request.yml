@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest an improvement or a new feature for NovaVault.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+
+        NovaVault is a local-first desktop app maintained by one person, so scope is kept deliberately tight.
+        The following are **out of scope**: cloud sync, browser extension or autofill, mobile apps and multi-user sharing.
+        Core features never require network access.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem would this solve? Describe the situation, not the solution.
+      placeholder: "When I ..., I cannot ..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How you would like NovaVault to behave.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you have considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups, examples from other tools, or anything else that helps.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not been requested yet.
+          required: true
+        - label: This request is not one of the out-of-scope items above and does not require network access for core features.
+          required: true
