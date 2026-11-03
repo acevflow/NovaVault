@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "license": "GPL-3.0-or-later",
   "scripts": {
+    "check": "node scripts/check.mjs",
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build"
