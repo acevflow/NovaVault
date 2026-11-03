@@ -20,5 +20,7 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod keys;
 
 pub use error::{CryptoError, Result};
+pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};
