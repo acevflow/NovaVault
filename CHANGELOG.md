@@ -39,12 +39,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Emergency recovery codes (`RecoveryCode`) in `novavault-core`: 150 random bits from the OS CSPRNG encoded with a 32-symbol alphabet without look-alikes (no `0`, `1`, `O`, `I`), a 2-symbol checksum that catches every single-symbol typo and adjacent swap, a grouped display form (`XXXX-XXXX-…`, 8 groups of 4) and case- and separator-insensitive parsing with typed errors.
 - Key slots (`KeySlot`, `SlotType`) in `novavault-core`: the vault key wrapped with XChaCha20-Poly1305 under an Argon2id key derived from the master password or the recovery code, with a fresh salt and nonce per wrap, the vault header and slot metadata authenticated as associated data, and a strict fixed 101-byte encoding.
 - Key slot table (`KeySlots`) in `novavault-core`: create a vault (random 256-bit vault key, password slot, recovery slot and a new recovery code), unlock with the master password or the recovery code, change the master password by re-wrapping only the password slot, and regenerate the recovery code so the previous one stops working.
+- Vault file format version 0 in `novavault-core`:
+  - Versioned 32-byte plaintext header (`Header`): magic bytes, format version, AEAD identifier, reserved flags, slot count and a random vault identifier; magic and version are checked before anything else.
+  - Item model (`Item`, `ItemContent`, `ItemId`, `ItemKind`): passwords, notes and secrets, each with an id, title, creation and update timestamps and an encrypted payload. Only the id and type are in plaintext; payloads are padded to 64-byte buckets and secret fields are zeroizing `SecretString`s.
+  - `Vault`: create a vault, open it with the master password or the recovery code, list, read, insert, update and remove items, and save with atomic writes (temporary file, flush, rename; owner-only permissions on Unix).
+  - A whole-file integrity seal that detects removed, duplicated, reordered or replayed records.
+  - Typed `VaultError` for I/O, foreign files, unsupported versions and algorithms, corruption and wrong credentials, with no secret data in any variant.
+  - Round-trip, version-mismatch, truncation, per-field corruption and record-replay tests, and known-encoding vectors for the header and payload.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed
 
 - Vault format specification: AEAD fixed to XChaCha20-Poly1305; Argon2id bounds and salt, nonce and wrapped-key sizes filled in.
 - Vault format specification: key slot byte layout, wrapping associated data (`header ‖ slot_metadata`), slot operations and the recovery code alphabet, length, checksum, display form and parsing rules are now specified, with a recovery code test vector.
+- Vault format specification finalized for format version 0: file layout, header, record types and encoding, payload encoding and padding, integrity seal, reader validation order and test vectors. Attachments are no longer part of version 0 and will be specified with a later format version.
+- Architecture document describes the core library modules and the vault file; the threat model records the payload padding and the integrity seal.
 - CI builds the UI before the Rust checks (the Tauri shell embeds the built UI) and checks UI formatting; Dependabot also tracks the root npm package (Tauri CLI).
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main

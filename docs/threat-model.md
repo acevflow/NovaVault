@@ -40,7 +40,7 @@ This document states what NovaVault protects, who it protects it from, which thr
 | Brute-forcing the master password from a copied vault | 1 | Argon2id with memory-hard parameters stored per key slot, random per-slot salt. Parameters can be raised over time by re-wrapping the slot. |
 | Brute-forcing the recovery code | 1 | Recovery code is generated from the OS CSPRNG with enough entropy (target ≥ 128 bits) to be infeasible to guess, and also stretched with Argon2id. |
 | Reading records or attachments from the file | 1 | All data encrypted with an AEAD cipher (XChaCha20-Poly1305 or AES-GCM) under the vault key. |
-| Modifying, swapping or truncating ciphertext | 2 | AEAD authentication on every record, attachment chunk and key slot. Associated data binds each ciphertext to its record ID, type and the vault header so pieces cannot be moved between positions or vaults. |
+| Modifying, swapping or truncating ciphertext | 2 | AEAD authentication on every record, attachment chunk and key slot. Associated data binds each ciphertext to its record ID, type and the vault header so pieces cannot be moved between positions or vaults. A whole-file integrity seal under the vault key detects deleted, duplicated or reordered records and an individual record replaced by an older version. |
 | Downgrading format or KDF parameters in the header | 2 | Header is authenticated (bound as associated data). The core enforces minimum KDF parameters and refuses unknown or older-than-supported format versions. |
 | Malformed file triggering parser bugs | 2 | Strict, bounds-checked parsing in Rust with typed errors; no `unwrap()`; fuzz and negative tests. |
 | Script injection in the webview exfiltrating keys | 3 | Keys never cross the IPC boundary. Strict CSP (no remote origins, no inline script, no `eval`), React escaping by default, minimal Tauri capabilities and no network access from the webview. |
@@ -68,8 +68,8 @@ NovaVault does not attempt to defend against the following. These match the out-
 
 ## Residual risks
 
-- **Metadata leakage.** The vault file size, and potentially the number and approximate size of records and attachments, may be observable. Whether records are padded is to be decided in the core implementation.
-- **Rollback.** An attacker who can replace the file may restore an older, validly encrypted version. Detecting this would require state outside the file and is not planned for the MVP.
+- **Metadata leakage.** The vault file size, the number of records, each record's type and identifier, and each record's size rounded up to 64 bytes are observable without the master password. Titles, timestamps and all field contents are encrypted; payload padding hides the exact length of short secrets but not the rough size of long notes.
+- **Rollback.** An attacker who can replace the file may restore an older, validly encrypted version of the whole file. The integrity seal prevents mixing records from different versions, but detecting a full rollback would require state outside the file and is not planned for the MVP.
 - **OS-level copies.** Swap, hibernation files, crash dumps and the OS clipboard history may retain secrets outside NovaVault's control. Memory locking and platform-specific mitigations are to be evaluated.
 - **Webview display.** Values revealed in the UI exist as JavaScript strings until garbage-collected. Only explicitly revealed values reach the UI.
 

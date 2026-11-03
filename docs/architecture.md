@@ -3,7 +3,7 @@
 This document describes how NovaVault is put together: its components, the layers they form, how data moves between them, and why every cryptographic operation lives in Rust.
 
 > [!NOTE]
-> NovaVault is pre-alpha. The project scaffold and the core's cryptographic primitives (see [Cryptography and dependencies](#cryptography-and-dependencies)) are in place; key slots, the vault format and the app flows are not implemented yet. This document describes the intended design. Details will be refined as the core implementation is written, and this page will be kept in sync with the code.
+> NovaVault is pre-alpha. The project scaffold and the core library are in place: cryptographic primitives, key slots, recovery codes and the vault file format with passwords, notes and secrets (see [Core library](#core-library)). The Tauri commands, the UI flows and attachments are not implemented yet; those parts of this document describe the intended design and will be kept in sync with the code as they land.
 
 ## Goals
 
@@ -46,10 +46,38 @@ This document describes how NovaVault is put together: its components, the layer
 
 The trust boundary is the Tauri IPC bridge. Everything above it is assumed to be potentially hostile (for example, if malicious content ever managed to execute script in the webview). Everything below it is the trusted computing base and is kept as small as possible.
 
+## Core library
+
+`crates/novavault-core` is organized in layers, each using only the ones below it:
+
+| Module | Responsibility |
+| ------ | -------------- |
+| `vault` | `Vault`, the unlocked vault: `create`, `open_with_password`, `open_with_recovery_code`, `list`, `get`, `insert`, `update`, `remove`, `save`. |
+| `item` | The item model (`PasswordItem`, `NoteItem`, `SecretItem`, `ItemId`) and the padded payload encoding. |
+| `format` (private) | Byte framing of the file, record associated data and the whole-file integrity seal. Pure functions, no I/O. |
+| `atomic` (private) | Atomic file replacement (temporary file, flush, rename). |
+| `header` | The plaintext versioned header. |
+| `slots`, `recovery` | Key slots and recovery codes. |
+| `kdf`, `aead`, `keys`, `error` | Primitives, key types and typed errors (`CryptoError`, `VaultError`). |
+
+### Vault file
+
+The byte-level format is specified in [vault-format.md](vault-format.md). In short:
+
+```text
+header (32) ‖ password slot (101) ‖ recovery slot (101) ‖ record_count ‖ records… ‖ seal (40)
+```
+
+- **Records** hold one item each. Only the random record identifier and the item type are in plaintext; the title, timestamps and fields are encrypted together under the vault key, padded to 64-byte buckets. Each record's associated data binds it to the vault header, its identifier and its type.
+- **Integrity seal.** The file ends with an AEAD tag under the vault key over everything before it, so removing, duplicating, reordering or replaying an individual record is detected, not only modifying one.
+- **Opening** checks the whole structure (magic, version, header fields, slots, record framing, sizes) before running Argon2id, so a foreign, newer or truncated file is rejected quickly with a precise `VaultError`. A wrong secret or damaged slot is reported as the single `InvalidCredentials` error. The seal is verified before any record can be read.
+- **Saving** encodes the file in memory and replaces the old one atomically: a temporary file in the same directory is written, flushed and renamed over the vault, so a crash leaves either the old or the new file, never a mix. On Unix the file is created owner-only.
+- **No new dependencies** were needed: the encoding is a small hand-written binary format and atomic writes use the standard library.
+
 ## Session state
 
-- While a vault is unlocked, the core holds the 256-bit vault key in a `secrecy` wrapper inside the Rust process. The key is zeroized when the vault is locked, when the session is dropped and when the app exits.
-- Decrypted records are produced on demand for a single command and dropped (zeroized where they contain secrets) once the response has been built. The core does not keep a long-lived plaintext cache of the vault.
+- While a vault is unlocked, the core holds the 256-bit vault key in a `secrecy` wrapper inside the Rust process, owned by a `Vault` value. The key is zeroized when the `Vault` is dropped, which is how a vault is locked, and when the app exits.
+- Records stay encrypted in memory. A record is decrypted on demand for a single request and dropped (zeroized) once the response has been built; secret fields are `SecretString`s and other text fields are wiped on drop. The core does not keep a long-lived plaintext cache of the vault.
 - Locking discards the session. Any subsequent command that needs vault data fails with a "locked" error until the user unlocks again.
 
 ## Data flows
@@ -107,7 +135,7 @@ With the vault unlocked, the core derives a new wrapping key from the new secret
 
 ## Cryptography and dependencies
 
-The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error` modules). Everything else in the core is built on these few functions: the `recovery` module (recovery codes) and the `slots` module (key slots and their operations) use only `derive_key`, `encrypt` and `decrypt`, and add no dependencies.
+The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error` modules). Everything else in the core is built on these few functions: recovery codes, key slots, records and the integrity seal use only `derive_key`, `encrypt` and `decrypt`, and add no dependencies.
 
 ### Algorithms and parameters
 
@@ -147,6 +175,7 @@ Every cryptography-related crate and why it is used:
 - Argon2id: RFC 9106 §5.3 (with secret and associated data) and the reference implementation's `password`/`somesalt` vector, both run through the same parameter wiring as production derivation.
 - XChaCha20-Poly1305: draft-irtf-cfrg-xchacha-03 Appendix A.3.1.
 - Tamper detection: every single-bit flip of a sealed message, truncation, appended bytes, a wrong key and wrong associated data are all rejected.
+- Vault format: known encodings of the header and of an item payload (published in [vault-format.md](vault-format.md#13-test-vectors)); every truncation of a vault file; a flipped byte in every field of every section; a removed or replayed record; unsupported versions, algorithms and foreign files.
 
 ## Related documents
 
