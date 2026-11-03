@@ -23,7 +23,9 @@
 //! - [`recovery`]: human-readable emergency [`RecoveryCode`]s with a
 //!   typo-detecting checksum.
 //! - [`slots`]: [`KeySlot`]s wrapping the vault key under the master
-//!   password or the recovery code.
+//!   password or the recovery code, and the [`KeySlots`] table with the
+//!   create, unlock, change-password and regenerate-recovery-code
+//!   operations.
 //! - [`error`]: the typed [`CryptoError`].
 //!
 //! The rest of the vault format lands in later releases.
@@ -43,4 +45,4 @@ pub use error::{CryptoError, Result};
 pub use kdf::{KdfParams, derive_key};
 pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};
 pub use recovery::RecoveryCode;
-pub use slots::{KeySlot, SLOT_LEN, SlotType};
+pub use slots::{KeySlot, KeySlots, SLOT_LEN, SlotType};

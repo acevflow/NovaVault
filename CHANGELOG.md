@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Unit tests with RFC 9106, Argon2 reference and XChaCha20-Poly1305 draft test vectors, plus tamper-detection tests.
 - Emergency recovery codes (`RecoveryCode`) in `novavault-core`: 150 random bits from the OS CSPRNG encoded with a 32-symbol alphabet without look-alikes (no `0`, `1`, `O`, `I`), a 2-symbol checksum that catches every single-symbol typo and adjacent swap, a grouped display form (`XXXX-XXXX-…`, 8 groups of 4) and case- and separator-insensitive parsing with typed errors.
 - Key slots (`KeySlot`, `SlotType`) in `novavault-core`: the vault key wrapped with XChaCha20-Poly1305 under an Argon2id key derived from the master password or the recovery code, with a fresh salt and nonce per wrap, the vault header and slot metadata authenticated as associated data, and a strict fixed 101-byte encoding.
+- Key slot table (`KeySlots`) in `novavault-core`: create a vault (random 256-bit vault key, password slot, recovery slot and a new recovery code), unlock with the master password or the recovery code, change the master password by re-wrapping only the password slot, and regenerate the recovery code so the previous one stops working.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed

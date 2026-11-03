@@ -263,6 +263,140 @@ impl KeySlot {
     }
 }
 
+/// The vault's key slot table: one password slot and one recovery slot,
+/// both wrapping the same vault key.
+///
+/// Every operation that rewrites a slot builds the new slot completely
+/// before replacing the old one, so a failure leaves the table unchanged.
+/// Persisting the updated table (atomically) is the caller's job.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeySlots {
+    password: KeySlot,
+    recovery: KeySlot,
+}
+
+impl KeySlots {
+    /// Sets up the slots of a new vault.
+    ///
+    /// Generates a random 256-bit vault key and a new recovery code, and
+    /// wraps the key under both the master `password` and the code. Returns
+    /// the table, the vault key (to encrypt the vault's data) and the
+    /// recovery code (to show to the user once).
+    ///
+    /// # Errors
+    ///
+    /// Any error of [`KeySlot::wrap_password`] or [`RecoveryCode::generate`].
+    pub fn create(
+        password: &SecretSlice<u8>,
+        params: KdfParams,
+        header: &[u8],
+    ) -> Result<(Self, SecretKey, RecoveryCode)> {
+        let vault_key = SecretKey::generate()?;
+        let code = RecoveryCode::generate()?;
+        let slots = Self {
+            password: KeySlot::wrap_password(password, &vault_key, params, header)?,
+            recovery: KeySlot::wrap_recovery_code(&code, &vault_key, params, header)?,
+        };
+        Ok((slots, vault_key, code))
+    }
+
+    /// Rebuilds a table from slots read from a vault file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CryptoError::MalformedKeySlot`] if `password` is not a
+    /// password slot or `recovery` is not a recovery slot.
+    pub fn from_slots(password: KeySlot, recovery: KeySlot) -> Result<Self> {
+        if password.slot_type() != SlotType::Password || recovery.slot_type() != SlotType::Recovery
+        {
+            return Err(CryptoError::MalformedKeySlot {
+                reason: "unexpected slot type",
+            });
+        }
+        Ok(Self { password, recovery })
+    }
+
+    /// The password slot.
+    pub const fn password_slot(&self) -> &KeySlot {
+        &self.password
+    }
+
+    /// The recovery slot.
+    pub const fn recovery_slot(&self) -> &KeySlot {
+        &self.recovery
+    }
+
+    /// Unlocks the vault key with the master password.
+    ///
+    /// # Errors
+    ///
+    /// [`CryptoError::Decryption`] for a wrong password or a corrupted slot;
+    /// see [`KeySlot::unwrap_password`].
+    pub fn unlock_with_password(
+        &self,
+        password: &SecretSlice<u8>,
+        header: &[u8],
+    ) -> Result<SecretKey> {
+        self.password.unwrap_password(password, header)
+    }
+
+    /// Unlocks the vault key with the recovery code.
+    ///
+    /// # Errors
+    ///
+    /// [`CryptoError::Decryption`] for a wrong code or a corrupted slot;
+    /// see [`KeySlot::unwrap_recovery_code`].
+    pub fn unlock_with_recovery_code(
+        &self,
+        code: &RecoveryCode,
+        header: &[u8],
+    ) -> Result<SecretKey> {
+        self.recovery.unwrap_recovery_code(code, header)
+    }
+
+    /// Changes the master password by re-wrapping the vault key under
+    /// `new_password`.
+    ///
+    /// Only the password slot changes: the vault key, and therefore all
+    /// encrypted data, stays the same. `vault_key` is the key obtained from
+    /// an unlock, which may have used the recovery code (the
+    /// forgotten-password flow).
+    ///
+    /// # Errors
+    ///
+    /// Any error of [`KeySlot::wrap_password`]; the table is then unchanged.
+    pub fn change_password(
+        &mut self,
+        vault_key: &SecretKey,
+        new_password: &SecretSlice<u8>,
+        params: KdfParams,
+        header: &[u8],
+    ) -> Result<()> {
+        self.password = KeySlot::wrap_password(new_password, vault_key, params, header)?;
+        Ok(())
+    }
+
+    /// Replaces the recovery code with a newly generated one and returns it.
+    ///
+    /// The recovery slot is rewritten with a fresh salt, so the previous
+    /// code no longer opens the vault once the updated table is saved.
+    ///
+    /// # Errors
+    ///
+    /// Any error of [`RecoveryCode::generate`] or
+    /// [`KeySlot::wrap_recovery_code`]; the table is then unchanged.
+    pub fn regenerate_recovery_code(
+        &mut self,
+        vault_key: &SecretKey,
+        params: KdfParams,
+        header: &[u8],
+    ) -> Result<RecoveryCode> {
+        let code = RecoveryCode::generate()?;
+        self.recovery = KeySlot::wrap_recovery_code(&code, vault_key, params, header)?;
+        Ok(code)
+    }
+}
+
 /// Associated data for wrapping: `header ‖ slot_metadata`. The metadata has
 /// a fixed length, so the concatenation is unambiguous.
 fn associated_data(header: &[u8], metadata: &[u8; SLOT_METADATA_LEN]) -> Vec<u8> {
@@ -273,15 +407,15 @@ fn associated_data(header: &[u8], metadata: &[u8; SLOT_METADATA_LEN]) -> Vec<u8>
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     /// Lowest accepted cost, so debug-build tests stay fast.
-    pub(crate) fn fast_params() -> KdfParams {
+    fn fast_params() -> KdfParams {
         KdfParams::new(KdfParams::MIN_MEMORY_KIB, KdfParams::MIN_ITERATIONS, 1).unwrap()
     }
 
-    pub(crate) fn secret(text: &str) -> SecretSlice<u8> {
+    fn secret(text: &str) -> SecretSlice<u8> {
         SecretSlice::from(text.as_bytes().to_vec())
     }
 
@@ -432,6 +566,119 @@ pub(crate) mod tests {
         assert!(matches!(
             KeySlot::from_bytes(&weak),
             Err(CryptoError::InvalidKdfParams { .. })
+        ));
+    }
+
+    fn new_vault(password: &str) -> (KeySlots, SecretKey, RecoveryCode) {
+        KeySlots::create(&secret(password), fast_params(), HEADER).unwrap()
+    }
+
+    #[test]
+    fn create_wraps_one_key_in_both_slots() {
+        let (slots, vault_key, code) = new_vault("pw");
+        assert_eq!(slots.password_slot().slot_type(), SlotType::Password);
+        assert_eq!(slots.recovery_slot().slot_type(), SlotType::Recovery);
+        let a = slots.unlock_with_password(&secret("pw"), HEADER).unwrap();
+        let b = slots.unlock_with_recovery_code(&code, HEADER).unwrap();
+        assert_eq!(a.expose(), vault_key.expose());
+        assert_eq!(b.expose(), vault_key.expose());
+    }
+
+    #[test]
+    fn unlock_with_wrong_secrets_fails() {
+        let (slots, _, _) = new_vault("pw");
+        assert_eq!(
+            slots
+                .unlock_with_password(&secret("PW"), HEADER)
+                .map(|_| ()),
+            Err(CryptoError::Decryption)
+        );
+        let wrong_code = RecoveryCode::generate().unwrap();
+        assert_eq!(
+            slots
+                .unlock_with_recovery_code(&wrong_code, HEADER)
+                .map(|_| ()),
+            Err(CryptoError::Decryption)
+        );
+    }
+
+    #[test]
+    fn regenerated_recovery_code_replaces_the_old_one() {
+        let (mut slots, _, old_code) = new_vault("pw");
+        let vault_key = slots.unlock_with_password(&secret("pw"), HEADER).unwrap();
+        let password_slot = slots.password_slot().clone();
+
+        let new_code = slots
+            .regenerate_recovery_code(&vault_key, fast_params(), HEADER)
+            .unwrap();
+
+        assert_eq!(
+            slots
+                .unlock_with_recovery_code(&old_code, HEADER)
+                .map(|_| ()),
+            Err(CryptoError::Decryption)
+        );
+        let unlocked = slots.unlock_with_recovery_code(&new_code, HEADER).unwrap();
+        assert_eq!(unlocked.expose(), vault_key.expose());
+        assert_eq!(slots.password_slot(), &password_slot);
+    }
+
+    #[test]
+    fn password_change_keeps_data_accessible() {
+        let (mut slots, vault_key, code) = new_vault("old password");
+        let record = aead::encrypt(&vault_key, b"my secret note", b"record-1").unwrap();
+        let recovery_slot = slots.recovery_slot().clone();
+
+        slots
+            .change_password(&vault_key, &secret("new password"), fast_params(), HEADER)
+            .unwrap();
+
+        assert_eq!(
+            slots
+                .unlock_with_password(&secret("old password"), HEADER)
+                .map(|_| ()),
+            Err(CryptoError::Decryption)
+        );
+        let unlocked = slots
+            .unlock_with_password(&secret("new password"), HEADER)
+            .unwrap();
+        assert_eq!(unlocked.expose(), vault_key.expose());
+        assert_eq!(
+            aead::decrypt(&unlocked, &record, b"record-1")
+                .unwrap()
+                .expose_secret(),
+            b"my secret note"
+        );
+        // Re-wrap only: the recovery slot is untouched and still works.
+        assert_eq!(slots.recovery_slot(), &recovery_slot);
+        assert!(slots.unlock_with_recovery_code(&code, HEADER).is_ok());
+    }
+
+    #[test]
+    fn forgotten_password_flow() {
+        let (mut slots, _, code) = new_vault("forgotten");
+        let vault_key = slots.unlock_with_recovery_code(&code, HEADER).unwrap();
+        slots
+            .change_password(&vault_key, &secret("fresh"), fast_params(), HEADER)
+            .unwrap();
+        let unlocked = slots
+            .unlock_with_password(&secret("fresh"), HEADER)
+            .unwrap();
+        assert_eq!(unlocked.expose(), vault_key.expose());
+    }
+
+    #[test]
+    fn from_slots_checks_slot_types() {
+        let (slots, _, _) = new_vault("pw");
+        let password = slots.password_slot().clone();
+        let recovery = slots.recovery_slot().clone();
+        assert_eq!(
+            KeySlots::from_slots(password.clone(), recovery.clone()).unwrap(),
+            slots
+        );
+        assert!(matches!(
+            KeySlots::from_slots(recovery, password),
+            Err(CryptoError::MalformedKeySlot { .. })
         ));
     }
 }
