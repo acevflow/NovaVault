@@ -51,7 +51,7 @@ A short summary. The full design is described in the [architecture](docs/archite
 - **Two key slots.** A random 256-bit vault key encrypts all data. It is stored wrapped twice: once under a key derived from the master password and once under a key derived from the recovery code. Either slot opens the vault, and changing the master password only re-wraps the vault key.
 - **Memory hygiene.** Secrets are held in `secrecy` types and wiped with `zeroize`. Secrets are never logged.
 - **Hardened shell.** Strict Content Security Policy and a minimal Tauri capability set.
-- **Open format.** The vault format is versioned and documented as a public specification ([draft](docs/vault-format.md)).
+- **Open format.** The vault format is versioned and documented as a public specification ([format version 0](docs/vault-format.md), pre-release).
 
 Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it privately.
 
@@ -95,14 +95,14 @@ NovaVault is **pre-alpha**. Current progress toward the MVP:
 - [x] Project scaffold: Cargo workspace, Tauri 2 shell (strict CSP, minimal capabilities), React + TypeScript UI, single check command
 - [x] Core crypto primitives: Argon2id key derivation, XChaCha20-Poly1305 encryption, zeroizing key types
 - [x] Core key slots: vault key wrapped under the master password and the recovery code, recovery code generation and parsing, password change and recovery code regeneration
-- [ ] Core crate: vault file format (header, records, attachments)
+- [x] Core vault file format: versioned header, key slots, encrypted password, note and secret records, whole-file integrity seal, atomic saves (attachments come with the attachments feature below)
 - [ ] Create, unlock and lock a vault
 - [ ] Passwords, notes and secrets (CRUD)
 - [ ] Encrypted file attachments
 - [ ] Emergency recovery code and master password change
 - [ ] Auto-lock on inactivity, suspend and screen lock
 - [ ] Clipboard auto-clear
-- [ ] Public vault format specification
+- [x] Public vault format specification (format version 0, pre-release; attachments to be specified)
 - [x] CI builds and tests on Windows, macOS and Linux
 - [ ] First release
 
@@ -114,7 +114,7 @@ Project documentation lives in [`docs/`](docs/README.md):
 
 - [Architecture](docs/architecture.md): how the Rust core, the Tauri layer and the UI fit together, and why all cryptography lives in Rust.
 - [Threat model](docs/threat-model.md): assets, adversaries, threats and mitigations.
-- [Vault format specification](docs/vault-format.md): the versioned, public on-disk format (draft skeleton).
+- [Vault format specification](docs/vault-format.md): the versioned, public on-disk format (version 0, pre-release).
 - [Development guide](docs/development.md): setup per OS, commands and project layout.
 
 Planned: **Cryptography and dependencies**, covering algorithms, parameters and the justification for every cryptography-related crate.

@@ -9,7 +9,7 @@ Design and contributor documentation for NovaVault. Start with the architecture,
 | -------- | -------------- |
 | [Architecture](architecture.md) | Components, layers, trust boundary, data flows and why all cryptography lives in Rust. |
 | [Threat model](threat-model.md) | Assets, adversaries, in-scope and out-of-scope threats, mitigations and residual risks. |
-| [Vault format specification](vault-format.md) | Versioned on-disk format: header, key slots, encrypted records, attachments. Draft skeleton. |
+| [Vault format specification](vault-format.md) | Versioned on-disk format: header, key slots, encrypted records, integrity seal, reader rules and test vectors. Format version 0, pre-release; attachments not yet specified. |
 | [Development guide](development.md) | Setup on Windows, macOS and Linux, commands and project layout. |
 
 Cryptography and dependencies (algorithms, parameters and the justification for every cryptography-related crate) are covered in [Architecture: Cryptography and dependencies](architecture.md#cryptography-and-dependencies).
