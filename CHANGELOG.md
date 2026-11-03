@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Vault format specification: AEAD fixed to XChaCha20-Poly1305; Argon2id bounds and salt, nonce and wrapped-key sizes filled in.
+- Vault format specification: key slot byte layout, wrapping associated data (`header ‖ slot_metadata`), slot operations and the recovery code alphabet, length, checksum, display form and parsing rules are now specified, with a recovery code test vector.
 - CI builds the UI before the Rust checks (the Tauri shell embeds the built UI) and checks UI formatting; Dependabot also tracks the root npm package (Tauri CLI).
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main
