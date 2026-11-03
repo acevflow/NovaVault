@@ -89,7 +89,7 @@ cd NovaVault
 | Rust lints | `cargo clippy --all-targets -- -D warnings` | Once the workspace exists |
 | Rust tests | `cargo test --workspace` | Once the workspace exists |
 
-The full local check is the one command to run before every push. CI runs the same checks on Windows, macOS and Linux.
+The full local check is the one command to run before every push. CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the same checks on Windows, macOS and Linux; steps for a component (Rust workspace, UI) are skipped until that component exists in the repository.
 
 ## Project layout
 
@@ -99,7 +99,7 @@ src-tauri/               thin Tauri 2 shell: commands, OS hooks, CSP, capabiliti
 ui/                      React + TypeScript front end
 docs/                    architecture, threat model, vault format, this guide
 assets/                  logo and other static assets
-.github/                 CI workflows and templates (coming soon)
+.github/                 CI workflow, Dependabot, issue and PR templates
 README.md                project overview and status
 SECURITY.md              vulnerability reporting policy
 CONTRIBUTING.md          contribution rules
