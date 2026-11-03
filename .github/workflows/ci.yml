@@ -1,0 +1,141 @@
+# Continuous integration for NovaVault.
+#
+# Runs the same checks as the full local check on Windows, macOS and Linux.
+# Each component's steps run only once its project files exist, so this
+# workflow stays valid (and green) before the Rust workspace or the UI are
+# scaffolded, and starts checking them automatically when they land.
+#
+# Third-party actions are pinned to full commit SHAs because this is a
+# security-sensitive project; Dependabot keeps the pins up to date.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: CI only needs to read the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Platform-specific failures are useful to see side by side.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Detect project components
+        id: detect
+        run: |
+          detect() { if [ -e "$2" ]; then echo "$1=true"; else echo "$1=false"; fi; }
+          {
+            # Root Cargo.toml is the workspace containing the core crate and src-tauri.
+            detect rust Cargo.toml
+            detect tauri src-tauri/Cargo.toml
+            detect ui ui/package.json
+          } | tee -a "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------
+      # Rust
+      # ---------------------------------------------------------------
+      - name: Install Rust toolchain
+        if: steps.detect.outputs.rust == 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        if: steps.detect.outputs.rust == 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      # Tauri needs the WebKitGTK stack on Linux; same list as docs/development.md.
+      - name: Install Tauri system dependencies (Linux)
+        if: steps.detect.outputs.tauri == 'true' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Check Rust formatting
+        if: steps.detect.outputs.rust == 'true'
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        if: steps.detect.outputs.rust == 'true'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run Rust tests
+        if: steps.detect.outputs.rust == 'true'
+        run: cargo test --workspace --locked
+
+      # ---------------------------------------------------------------
+      # UI (React + TypeScript)
+      #
+      # Contract for ui/package.json: it must define the "lint",
+      # "typecheck" and "test" scripts, and ui/package-lock.json must be
+      # committed (required by npm ci and the npm cache).
+      # ---------------------------------------------------------------
+      - name: Set up Node.js
+        if: steps.detect.outputs.ui == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI dependencies
+        if: steps.detect.outputs.ui == 'true'
+        working-directory: ui
+        run: npm ci
+
+      - name: Lint UI
+        if: steps.detect.outputs.ui == 'true'
+        working-directory: ui
+        run: npm run lint
+
+      - name: Typecheck UI
+        if: steps.detect.outputs.ui == 'true'
+        working-directory: ui
+        run: npm run typecheck
+
+      - name: Test UI
+        if: steps.detect.outputs.ui == 'true'
+        working-directory: ui
+        run: npm test
+
+      - name: Summary
+        if: always()
+        env:
+          RUST: ${{ steps.detect.outputs.rust }}
+          UI: ${{ steps.detect.outputs.ui }}
+        run: |
+          status() { if [ "$1" = "true" ]; then echo "checked"; else echo "skipped (not present yet)"; fi; }
+          {
+            echo "### CI components on ${RUNNER_OS}"
+            echo "- Rust workspace: $(status "$RUST")"
+            echo "- UI: $(status "$UI")"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

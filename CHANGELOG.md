@@ -20,5 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Threat model: assets, adversaries, in-scope and out-of-scope threats, mitigations and residual risks.
   - Vault format specification skeleton (format version 0, draft): header, key slots, encrypted records, attachments and recovery code.
   - Development guide: per-OS setup, commands and project layout.
+- GitHub issue forms for bug reports and feature requests; blank issues are disabled and vulnerability reports are directed to private security advisories and `SECURITY.md`.
+- Pull request template with a security impact section and a contribution checklist.
+- CI workflow running Rust format, clippy and tests and UI lint, typecheck and tests on Windows, macOS and Linux, with caching; steps are skipped until the corresponding component exists. Actions are pinned to commit SHAs.
+- Dependabot configuration for Cargo, npm and GitHub Actions updates.
+- CI status badge in the README.
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main
