@@ -34,6 +34,11 @@
 #![forbid(unsafe_code)]
 
 pub mod aead;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "atomic writes are used by the vault module")
+)]
+mod atomic;
 pub mod error;
 #[cfg_attr(
     not(test),
@@ -50,6 +55,8 @@ pub mod kdf;
 pub mod keys;
 pub mod recovery;
 pub mod slots;
+#[cfg(test)]
+mod test_util;
 
 pub use aead::{NONCE_LEN, OVERHEAD, TAG_LEN, decrypt, encrypt};
 pub use error::{CryptoError, Result, VaultError, VaultResult};
