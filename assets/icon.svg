@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="1024" height="1024" role="img" aria-label="NovaVault icon">
+  <title>NovaVault</title>
+  <!-- App icon: the emblem from logo.svg (vault hexagon + nova star) without the wordmark. -->
+  <defs>
+    <linearGradient id="nv-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+  <polygon points="80,22 130,51 130,109 80,138 30,109 30,51" fill="none" stroke="url(#nv-grad)" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M80 50 L87 73 L110 80 L87 87 L80 110 L73 87 L50 80 L73 73 Z" fill="url(#nv-grad)"/>
+</svg>
