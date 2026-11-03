@@ -18,3 +18,7 @@
 
 // No unsafe code in the trusted core, ever.
 #![forbid(unsafe_code)]
+
+pub mod error;
+
+pub use error::{CryptoError, Result};
