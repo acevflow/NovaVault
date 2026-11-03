@@ -20,7 +20,9 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod kdf;
 pub mod keys;
 
 pub use error::{CryptoError, Result};
+pub use kdf::{KdfParams, derive_key};
 pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};

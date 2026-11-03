@@ -51,6 +51,12 @@ impl SecretKey {
         }))
     }
 
+    /// Wraps key bytes already held in a [`SecretBox`], so producers such as
+    /// the KDF can write output directly into zeroizing storage.
+    pub(crate) fn from_secret_box(bytes: SecretBox<[u8; KEY_LEN]>) -> Self {
+        Self(bytes)
+    }
+
     /// Returns the raw key bytes. Crate-internal so key material never
     /// crosses the public API.
     // Used by the AEAD module, which lands in a later commit.
