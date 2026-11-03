@@ -40,7 +40,7 @@ Explicitly out of scope: cloud sync, browser extension or autofill, mobile apps 
 
 ## Security model
 
-A short summary; the full design will be published in [`docs/`](#documentation).
+A short summary. The full design is described in the [architecture](docs/architecture.md) and [threat model](docs/threat-model.md) documents.
 
 - **Local only.** The vault is a single file on disk. NovaVault does not need network access for any core feature.
 - **Rust owns the secrets.** All cryptography and data access live in the Rust core. The React UI never receives the vault key or any raw key material; it talks to the core through a minimal set of Tauri commands.
@@ -50,7 +50,7 @@ A short summary; the full design will be published in [`docs/`](#documentation).
 - **Two key slots.** A random 256-bit vault key encrypts all data. It is stored wrapped twice: once under a key derived from the master password and once under a key derived from the recovery code. Either slot opens the vault, and changing the master password only re-wraps the vault key.
 - **Memory hygiene.** Secrets are held in `secrecy` types and wiped with `zeroize`. Secrets are never logged.
 - **Hardened shell.** Strict Content Security Policy and a minimal Tauri capability set.
-- **Open format.** The vault format is versioned and will be documented as a public specification.
+- **Open format.** The vault format is versioned and documented as a public specification ([draft](docs/vault-format.md)).
 
 Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it privately.
 
@@ -66,7 +66,7 @@ Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it priv
 ## Building from source
 
 > [!NOTE]
-> **Coming soon.** The application code has not been committed yet. These instructions describe the intended workflow and will be finalized with the first code drop.
+> **Coming soon.** The application code has not been committed yet. These instructions describe the intended workflow and will be finalized with the first code drop. Per-OS setup is detailed in the [development guide](docs/development.md).
 
 Prerequisites (coming soon):
 
@@ -103,11 +103,14 @@ See [CHANGELOG.md](CHANGELOG.md) for what has changed so far.
 
 ## Documentation
 
-Project documentation will live in the `docs/` directory (not yet created). Planned pages:
+Project documentation lives in [`docs/`](docs/README.md):
 
-- **Vault format specification**: the versioned, public on-disk format.
-- **Cryptography and dependencies**: algorithms, parameters and the justification for every cryptography-related crate.
-- **Architecture**: how the Rust core, the Tauri layer and the UI fit together.
+- [Architecture](docs/architecture.md): how the Rust core, the Tauri layer and the UI fit together, and why all cryptography lives in Rust.
+- [Threat model](docs/threat-model.md): assets, adversaries, threats and mitigations.
+- [Vault format specification](docs/vault-format.md): the versioned, public on-disk format (draft skeleton).
+- [Development guide](docs/development.md): setup per OS, commands and project layout.
+
+Planned: **Cryptography and dependencies**, covering algorithms, parameters and the justification for every cryptography-related crate.
 
 ## Contributing
 
