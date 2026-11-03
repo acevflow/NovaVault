@@ -67,21 +67,24 @@ Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it priv
 ## Building from source
 
 > [!NOTE]
-> **Coming soon.** The application code has not been committed yet. These instructions describe the intended workflow and will be finalized with the first code drop. Per-OS setup is detailed in the [development guide](docs/development.md).
+> The project scaffold is in place, but no vault features are implemented yet: the app opens a placeholder window. Per-OS setup is detailed in the [development guide](docs/development.md).
 
-Prerequisites (coming soon):
+Prerequisites:
 
 - [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)
 - [Node.js](https://nodejs.org/) (LTS)
 - The [Tauri 2 system prerequisites](https://tauri.app/start/prerequisites/) for your operating system
 
-Build and run (coming soon):
+Build and run:
 
 ```sh
 git clone https://github.com/acevflow/NovaVault.git
 cd NovaVault
-# Install UI dependencies, run the full local check, and start the app.
-# Exact commands will be documented here once the project scaffolding lands.
+npm ci                # Tauri CLI
+npm ci --prefix ui    # UI dependencies
+npm run check         # full local check: format, lint, test (Rust and UI)
+npm run dev           # start the app in development mode
+npm run build         # build a release bundle
 ```
 
 ## Project status and roadmap
@@ -89,6 +92,7 @@ cd NovaVault
 NovaVault is **pre-alpha**. Current progress toward the MVP:
 
 - [x] Repository, license and community files
+- [x] Project scaffold: Cargo workspace, Tauri 2 shell (strict CSP, minimal capabilities), React + TypeScript UI, single check command
 - [ ] Core crate: vault format, key derivation, key slots
 - [ ] Create, unlock and lock a vault
 - [ ] Passwords, notes and secrets (CRUD)
@@ -97,7 +101,7 @@ NovaVault is **pre-alpha**. Current progress toward the MVP:
 - [ ] Auto-lock on inactivity, suspend and screen lock
 - [ ] Clipboard auto-clear
 - [ ] Public vault format specification
-- [ ] CI builds and tests on Windows, macOS and Linux
+- [x] CI builds and tests on Windows, macOS and Linux
 - [ ] First release
 
 See [CHANGELOG.md](CHANGELOG.md) for what has changed so far.

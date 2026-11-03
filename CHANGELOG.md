@@ -25,5 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow running Rust format, clippy and tests and UI lint, typecheck and tests on Windows, macOS and Linux, with caching; steps are skipped until the corresponding component exists. Actions are pinned to commit SHAs.
 - Dependabot configuration for Cargo, npm and GitHub Actions updates.
 - CI status badge in the README.
+- Cargo workspace with shared lints (unsafe code denied; `unwrap()`/`expect()` denied outside tests) and an empty, documented `novavault-core` library crate.
+- Minimal Tauri 2 desktop shell (`src-tauri`) with one window, a strict production Content Security Policy, frozen prototypes, no global Tauri API and a default capability that grants no permissions.
+- App icons generated from a new square emblem (`assets/icon.svg`).
+- React + TypeScript UI scaffold in `ui/` built with Vite: strict TypeScript, ESLint (type-checked strict rules, React hooks, jsx-a11y), Prettier and Vitest with Testing Library.
+- Single full local check, `npm run check`, covering formatting, linting, typechecking, tests and builds for the UI and the Rust workspace; documented in `docs/development.md`.
+
+### Changed
+
+- CI builds the UI before the Rust checks (the Tauri shell embeds the built UI) and checks UI formatting; Dependabot also tracks the root npm package (Tauri CLI).
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main

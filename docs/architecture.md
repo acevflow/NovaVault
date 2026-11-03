@@ -3,7 +3,7 @@
 This document describes how NovaVault is put together: its components, the layers they form, how data moves between them, and why every cryptographic operation lives in Rust.
 
 > [!NOTE]
-> NovaVault is pre-alpha and the application code has not landed yet. This document describes the intended design. Details will be refined as the core implementation is written, and this page will be kept in sync with the code.
+> NovaVault is pre-alpha. The project scaffold is in place, but the core is not implemented yet. This document describes the intended design. Details will be refined as the core implementation is written, and this page will be kept in sync with the code.
 
 ## Goals
 
