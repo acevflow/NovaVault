@@ -36,6 +36,11 @@
 pub mod aead;
 pub mod error;
 pub mod header;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the payload codec is used by the vault module")
+)]
+pub mod item;
 pub mod kdf;
 pub mod keys;
 pub mod recovery;
@@ -44,6 +49,9 @@ pub mod slots;
 pub use aead::{NONCE_LEN, OVERHEAD, TAG_LEN, decrypt, encrypt};
 pub use error::{CryptoError, Result, VaultError, VaultResult};
 pub use header::{AeadId, FORMAT_VERSION, HEADER_LEN, Header, MAGIC, VaultId};
+pub use item::{
+    Item, ItemContent, ItemId, ItemKind, ItemSummary, NoteItem, PasswordItem, SecretItem,
+};
 pub use kdf::{KdfParams, derive_key};
 pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};
 pub use recovery::RecoveryCode;
