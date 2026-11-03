@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/novavault-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/acevflow/NovaVault"
+publish = false
+
+[workspace.lints.rust]
+# Unsafe code is not needed anywhere in NovaVault; any exception must be
+# justified explicitly at the crate level.
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+# Panicking on a secret-handling path is a correctness and availability bug.
+# Tests are exempted in clippy.toml.
+unwrap_used = "deny"
+expect_used = "deny"

@@ -1,0 +1,20 @@
+//! Core library of NovaVault, a local-first encrypted vault.
+//!
+//! This crate will own everything that touches keys or plaintext secrets:
+//! key derivation (Argon2id), authenticated encryption, the key-slot scheme
+//! (vault key wrapped under the master password and the recovery code), and
+//! reading, writing and validating the versioned vault format described in
+//! `docs/vault-format.md`.
+//!
+//! It deliberately has no dependency on Tauri or any UI so it can be reviewed
+//! and tested on its own. Security invariants the implementation must keep:
+//!
+//! - Only audited cryptographic crates are used; no custom primitives.
+//! - Secret material is held in `secrecy`/`zeroize` types and never logged.
+//! - Raw key material never crosses the public API towards the UI.
+//!
+//! The crate is currently an empty scaffold; functionality lands in later
+//! releases.
+
+// No unsafe code in the trusted core, ever.
+#![forbid(unsafe_code)]
