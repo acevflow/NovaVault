@@ -35,6 +35,11 @@
 
 pub mod aead;
 pub mod error;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the framing is used by the vault module")
+)]
+mod format;
 pub mod header;
 #[cfg_attr(
     not(test),
