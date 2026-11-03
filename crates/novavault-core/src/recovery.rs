@@ -134,6 +134,11 @@ impl RecoveryCode {
         SecretString::from(text)
     }
 
+    /// The canonical code bytes used as key derivation input.
+    pub(crate) fn kdf_input(&self) -> &SecretSlice<u8> {
+        &self.canonical
+    }
+
     /// Builds a code from its random symbol values (each below 32), appending
     /// the checksum symbols.
     fn from_data(data: &[u8; DATA_LEN]) -> Self {

@@ -22,6 +22,8 @@
 //! - [`keys`]: the zeroizing [`SecretKey`] type and [`Salt`].
 //! - [`recovery`]: human-readable emergency [`RecoveryCode`]s with a
 //!   typo-detecting checksum.
+//! - [`slots`]: [`KeySlot`]s wrapping the vault key under the master
+//!   password or the recovery code.
 //! - [`error`]: the typed [`CryptoError`].
 //!
 //! The rest of the vault format lands in later releases.
@@ -34,9 +36,11 @@ pub mod error;
 pub mod kdf;
 pub mod keys;
 pub mod recovery;
+pub mod slots;
 
 pub use aead::{NONCE_LEN, OVERHEAD, TAG_LEN, decrypt, encrypt};
 pub use error::{CryptoError, Result};
 pub use kdf::{KdfParams, derive_key};
 pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};
 pub use recovery::RecoveryCode;
+pub use slots::{KeySlot, SLOT_LEN, SlotType};

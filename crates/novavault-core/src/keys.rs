@@ -57,6 +57,19 @@ impl SecretKey {
         Self(bytes)
     }
 
+    /// Copies key bytes from a slice (for example a decrypted, zeroizing
+    /// buffer) straight into zeroizing storage.
+    ///
+    /// Returns `None` if `bytes` is not exactly [`KEY_LEN`] long.
+    pub(crate) fn try_from_slice(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != KEY_LEN {
+            return None;
+        }
+        Some(Self(SecretBox::init_with_mut(|key: &mut [u8; KEY_LEN]| {
+            key.copy_from_slice(bytes);
+        })))
+    }
+
     /// Returns the raw key bytes. Crate-internal so key material never
     /// crosses the public API.
     pub(crate) fn expose(&self) -> &[u8; KEY_LEN] {
@@ -127,6 +140,14 @@ mod tests {
     fn from_bytes_preserves_key() {
         let key = SecretKey::from_bytes([7u8; KEY_LEN]);
         assert_eq!(key.expose(), &[7u8; KEY_LEN]);
+    }
+
+    #[test]
+    fn try_from_slice_checks_length() {
+        let key = SecretKey::try_from_slice(&[5u8; KEY_LEN]).unwrap();
+        assert_eq!(key.expose(), &[5u8; KEY_LEN]);
+        assert!(SecretKey::try_from_slice(&[5u8; KEY_LEN - 1]).is_none());
+        assert!(SecretKey::try_from_slice(&[5u8; KEY_LEN + 1]).is_none());
     }
 
     #[test]
