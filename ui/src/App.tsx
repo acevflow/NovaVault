@@ -7,6 +7,7 @@ import { initialRoute, isUnlockedRoute, routerReducer, type Route } from './app/
 import { CreateVaultScreen } from './screens/create/CreateVaultScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { LoadingScreen, StartupErrorScreen } from './screens/StatusScreens';
+import { UnlockScreen } from './screens/unlock/UnlockScreen';
 import { ThemeProvider } from './theme/ThemeProvider';
 
 /**
@@ -90,8 +91,9 @@ function Screen({ route, onRetry, onUnlocked }: ScreenProps) {
     case 'create':
       return <CreateVaultScreen onCreated={onUnlocked} />;
     case 'unlock':
+      return <UnlockScreen onUnlocked={onUnlocked} />;
     case 'settings':
-      // Screens added in the following commits.
+      // Screen added in the following commit.
       return <p>Coming soon.</p>;
   }
 }
