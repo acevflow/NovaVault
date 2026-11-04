@@ -1,7 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the main window. Intentionally empty: grant a permission only when a feature needs it, and justify it in the PR.",
+  "description": "Permissions for the main window: only the NovaVault vault commands. No core plugin permissions (no events, file system, shell or HTTP). Grant anything else only when a feature needs it, and justify it in the PR.",
   "windows": ["main"],
-  "permissions": []
+  "permissions": [
+    "allow-create-vault",
+    "allow-unlock",
+    "allow-lock",
+    "allow-change-master-password",
+    "allow-regenerate-recovery-code",
+    "allow-list-items",
+    "allow-create-item",
+    "allow-update-item",
+    "allow-delete-item"
+  ]
 }
