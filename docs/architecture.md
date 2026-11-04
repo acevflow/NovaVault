@@ -3,7 +3,7 @@
 This document describes how NovaVault is put together: its components, the layers they form, how data moves between them, and why every cryptographic operation lives in Rust.
 
 > [!NOTE]
-> NovaVault is pre-alpha. The project scaffold and the core library are in place: cryptographic primitives, key slots, recovery codes and the vault file format with passwords, notes and secrets (see [Core library](#core-library)). The Tauri commands, the UI flows and attachments are not implemented yet; those parts of this document describe the intended design and will be kept in sync with the code as they land.
+> NovaVault is pre-alpha. The core library (cryptographic primitives, key slots, recovery codes and the vault file format with passwords, notes and secrets) and the Tauri command layer with auto-lock are in place (see [Core library](#core-library) and [Tauri command surface](#tauri-command-surface)). The UI flows, revealing and copying secrets, and attachments are not implemented yet; those parts of this document describe the intended design and will be kept in sync with the code as they land.
 
 ## Goals
 
@@ -78,7 +78,24 @@ header (32) ‖ password slot (101) ‖ recovery slot (101) ‖ record_count ‖
 
 - While a vault is unlocked, the core holds the 256-bit vault key in a `secrecy` wrapper inside the Rust process, owned by a `Vault` value. The key is zeroized when the `Vault` is dropped, which is how a vault is locked, and when the app exits.
 - Records stay encrypted in memory. A record is decrypted on demand for a single request and dropped (zeroized) once the response has been built; secret fields are `SecretString`s and other text fields are wiped on drop. The core does not keep a long-lived plaintext cache of the vault.
-- Locking discards the session. Any subsequent command that needs vault data fails with a "locked" error until the user unlocks again.
+- Locking discards the session. Any subsequent command that needs vault data fails with a `locked` error until the user unlocks again.
+- In the shell, `Session` (`src-tauri/src/session.rs`) is the single owner of the unlocked `Vault`, behind a mutex in Tauri's managed state. It holds the vault path, the Argon2id parameters for new key slots and the time of the last command. It has no Tauri types, so the logic behind every command is unit-tested without a running app.
+- There is one vault per installation, at `vault.nvault` in the app data directory (for example `%APPDATA%\io.github.acevflow.novavault` on Windows, `~/Library/Application Support/io.github.acevflow.novavault` on macOS and `~/.local/share/io.github.acevflow.novavault` on Linux). The path is chosen by the shell and never sent by the UI.
+
+## Auto-lock
+
+Three triggers lock the vault automatically. All of them wipe the vault key (by dropping the `Vault`) and then reload the main webview. Reloading throws away everything the UI holds in memory and returns it to its start screen without the UI having to subscribe to events, so the webview needs no event permission.
+
+| Trigger | Implementation |
+| ------- | -------------- |
+| Inactivity | A background thread checks every 5 seconds and locks once 5 minutes have passed since the last command. Every command counts as activity. The timeout is fixed until settings exist. |
+| System suspend | Windows: `WM_POWERBROADCAST` / `PBT_APMSUSPEND`. macOS: `NSWorkspaceWillSleepNotification`. Linux: logind `PrepareForSleep(true)`. |
+| Screen lock | Windows: `WM_WTSSESSION_CHANGE` / `WTS_SESSION_LOCK`. macOS: `com.apple.screenIsLocked` and `NSWorkspaceSessionDidResignActiveNotification` (fast user switching). Linux: logind `Session.Lock`, and `ActiveChanged(true)` from `org.freedesktop.ScreenSaver` or `org.gnome.ScreenSaver`. |
+
+- The OS triggers sit behind one `LockMonitor` trait (`src-tauri/src/os_lock/`) with one implementation per OS, selected at compile time. Windows uses a dedicated thread with a hidden, never-shown top-level window: power broadcasts reach only top-level windows. macOS registers notification observers on the main thread. Linux listens to D-Bus signals on Tauri's async runtime.
+- Locking on suspend runs synchronously inside the notification handler on Windows and macOS, so the key is wiped before the system sleeps.
+- If a monitor cannot start (for example, no logind on Linux), the app prints a fixed message and keeps running with the inactivity timer and manual locking.
+- **Scoped `unsafe`.** Windows and macOS offer these notifications only through FFI. The workspace denies `unsafe_code`, and only `os_lock/windows.rs` and `os_lock/macos.rs` opt out. Each `unsafe` block is a single FFI call with a `SAFETY` comment. The core crate keeps `#![forbid(unsafe_code)]`.
 
 ## Data flows
 
@@ -114,15 +131,55 @@ With the vault unlocked, the core derives a new wrapping key from the new secret
 
 ## Tauri command surface
 
-- Commands are coarse-grained and intent-based (`unlock`, `lock`, `list_records`, `get_record`, `copy_secret`, …), never generic ("read bytes", "decrypt blob").
+- Commands are coarse-grained and intent-based, never generic ("read bytes", "decrypt blob").
 - No command ever returns the vault key, wrapping keys, KDF output, or raw ciphertext.
 - Inputs are validated in Rust; errors returned to the UI are typed and contain no secret material.
-- The exact command list will be documented here once implemented.
+- Every handler (`src-tauri/src/commands.rs`) moves its arguments to a blocking worker thread, because Argon2id takes a noticeable time, then locks the session and delegates to it.
+- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these nine and no core plugin permission. A test checks that the two lists match.
+
+### Commands
+
+Arguments are camelCase in JavaScript (`invoke('change_master_password', { newPassword })`).
+
+| Command | Arguments | Returns | Notes |
+| ------- | --------- | ------- | ----- |
+| `create_vault` | `password` | `{ recoveryCode }` | Creates the vault and leaves it unlocked. The code (`XXXX-XXXX-…`) is returned only here; the UI must show it once and have the user confirm it was saved. |
+| `unlock` | `credential`: `{ method: "password" \| "recoveryCode", secret }` | nothing | Locks any open vault first, so a failed attempt leaves the app locked. Recovery codes are accepted in any case, with or without dashes. |
+| `lock` | none | nothing | Wipes the vault key. |
+| `change_master_password` | `newPassword` | nothing | Re-wraps the vault key in the password slot. Works after unlocking with the recovery code (forgotten-password flow). |
+| `regenerate_recovery_code` | none | `{ recoveryCode }` | Replaces the recovery slot; the previous code stops working. |
+| `list_items` | none | `[{ id, kind, title, createdAtMs, updatedAtMs }]` | No secret fields. `kind` is `"password"`, `"note"` or `"secret"`; `id` is 32 hex digits. |
+| `create_item` | `item` | `id` | |
+| `update_item` | `id`, `item` | nothing | The new content may have a different kind. |
+| `delete_item` | `id` | nothing | |
+
+`item` is tagged by `kind`: `{ kind: "password", title, username, password, url, notes }`, `{ kind: "note", title, body }` or `{ kind: "secret", title, value, notes }`. Every field is required (use empty strings). Secret fields are deserialized straight into `SecretString`.
+
+Every edit is saved to disk at once (atomically). If a save fails, the command returns `storage`; the edit stays in memory and is written by the next successful save.
+
+### Errors
+
+A failed command rejects with `{ code, message }`. The message is a fixed string. Details from the core (such as I/O error text, which can contain paths) are dropped, and no error ever contains a command argument.
+
+| Code | Meaning |
+| ---- | ------- |
+| `locked` | The vault is locked. |
+| `vault_not_found` | No vault exists yet (offer to create one). |
+| `vault_exists` | `create_vault` was called but a vault already exists. |
+| `invalid_credentials` | Wrong password or recovery code, or damaged key slot (intentionally indistinguishable). |
+| `invalid_recovery_code` | The recovery code is malformed (length, character or checksum): a typo, caught before key derivation. |
+| `invalid_input` | Malformed argument: an empty password or a bad item id. |
+| `item_not_found` | No item has that id. |
+| `invalid_item` | The item is too large or the vault is full. |
+| `unsupported_vault` | Not a vault file, or a newer format version or unknown algorithm. |
+| `corrupted` | The file failed a structural or integrity check. |
+| `storage` | The vault file could not be read or written. |
+| `internal` | Unexpected failure, for example of the system random number generator. |
 
 ## Shell hardening
 
 - **Content Security Policy:** strict, with no remote origins, no inline scripts and no `eval`.
-- **Capabilities:** the minimal Tauri capability set the UI needs. No shell, no arbitrary filesystem access and no HTTP from the webview.
+- **Capabilities:** only the nine vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
 - **No network:** core features do not open network connections.
 
 ## Why all cryptography lives in Rust
@@ -169,6 +226,17 @@ Every cryptography-related crate and why it is used:
 | [`secrecy`](https://crates.io/crates/secrecy) | Secret wrappers | Prevents accidental exposure (no `Debug` leak, explicit `expose_secret`) and zeroizes on drop. |
 | [`zeroize`](https://crates.io/crates/zeroize) | Memory wiping | Clears buffers in a way the compiler cannot optimize away. Also used by `secrecy` and the RustCrypto crates. |
 | [`thiserror`](https://crates.io/crates/thiserror) | Error types | Derive macro only, no runtime code. Not cryptographic; listed for completeness. |
+
+Shell (`src-tauri`) dependencies that handle secrets or OS security events:
+
+| Crate | Purpose | Justification |
+| ----- | ------- | ------------- |
+| [`secrecy`](https://crates.io/crates/secrecy) (`serde` feature) | Secret command arguments | Deserializes passwords, recovery codes and secret fields straight into `SecretString`, so Rust never holds them in a plain `String`. Serialization of secrets stays disabled. |
+| [`zeroize`](https://crates.io/crates/zeroize) (`derive`) | Wiping responses | Item titles in list responses are wiped once serialized. |
+| [`serde`](https://crates.io/crates/serde) | IPC (de)serialization | Already used by Tauri for every command; no new crate. |
+| [`windows`](https://crates.io/crates/windows) (Windows only) | Suspend and screen-lock events | Microsoft's official Win32 bindings, same version Tauri already uses. Only the window, library loader and remote desktop session APIs are enabled. |
+| [`objc2-app-kit`](https://crates.io/crates/objc2-app-kit), [`objc2-foundation`](https://crates.io/crates/objc2-foundation), [`block2`](https://crates.io/crates/block2) (macOS only) | Sleep and screen-lock notifications | The Objective-C bindings Tauri itself uses, same versions; only `NSWorkspace` and the notification center APIs are enabled. |
+| [`zbus`](https://crates.io/crates/zbus), [`futures-util`](https://crates.io/crates/futures-util) (Linux only) | logind and screen saver D-Bus signals | Pure-Rust D-Bus with no C library, run on Tauri's Tokio runtime (no extra executor, default features off). `futures-util` is already a Tauri dependency. Talks only to local system and session buses, never the network. |
 
 ### Test vectors
 

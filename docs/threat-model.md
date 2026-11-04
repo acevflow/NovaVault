@@ -44,10 +44,10 @@ This document states what NovaVault protects, who it protects it from, which thr
 | Downgrading format or KDF parameters in the header | 2 | Header is authenticated (bound as associated data). The core enforces minimum KDF parameters and refuses unknown or older-than-supported format versions. |
 | Malformed file triggering parser bugs | 2 | Strict, bounds-checked parsing in Rust with typed errors; no `unwrap()`; fuzz and negative tests. |
 | Script injection in the webview exfiltrating keys | 3 | Keys never cross the IPC boundary. Strict CSP (no remote origins, no inline script, no `eval`), React escaping by default, minimal Tauri capabilities and no network access from the webview. |
-| Script injection abusing Tauri commands | 3 | Coarse, intent-based commands that return only what a screen needs; no generic decrypt or file-access commands. |
+| Script injection abusing Tauri commands | 3 | Coarse, intent-based commands that return only what a screen needs; no generic decrypt or file-access commands. Commands are declared in `build.rs`, so Tauri rejects any command the capability does not grant, and the capability grants only the nine vault commands. The UI never supplies a file path: the vault location is fixed by the shell. |
 | Secrets lingering in memory | 4, 5 | `secrecy` wrappers and `zeroize` for keys and secret fields; no long-lived plaintext cache; session dropped on lock. |
 | Secrets left on the clipboard | 4, 5 | Copy is performed from Rust and the clipboard is cleared after a short timeout if it still holds the copied value. |
-| Unattended unlocked vault | 5 | Auto-lock on inactivity, system suspend and screen lock. |
+| Unattended unlocked vault | 5 | Auto-lock five minutes after the last command, before system suspend and on screen lock (one native monitor per OS). Auto-lock wipes the vault key and reloads the webview, discarding the UI's in-memory view. |
 | Shoulder surfing | 5 | Secret fields are masked by default and revealed only on explicit user action. |
 | Secrets in logs or crash output | all | Secrets are never logged; secret types do not implement printable formatting; error messages contain no key material. |
 | Lost master password | user | Emergency recovery code as a second key slot, shown once and confirmed by the user. |
@@ -72,6 +72,8 @@ NovaVault does not attempt to defend against the following. These match the out-
 - **Rollback.** An attacker who can replace the file may restore an older, validly encrypted version of the whole file. The integrity seal prevents mixing records from different versions, but detecting a full rollback would require state outside the file and is not planned for the MVP.
 - **OS-level copies.** Swap, hibernation files, crash dumps and the OS clipboard history may retain secrets outside NovaVault's control. Memory locking and platform-specific mitigations are to be evaluated.
 - **Webview display.** Values revealed in the UI exist as JavaScript strings until garbage-collected. Only explicitly revealed values reach the UI.
+- **IPC buffers.** Command arguments (master password, recovery code, item fields) and responses pass through JSON buffers owned by Tauri and the webview, which NovaVault cannot zeroize. Rust deserializes secrets straight into zeroizing types, but the serialized copies are freed without wiping. The recovery code crosses IPC only in the response to `create_vault` and `regenerate_recovery_code`.
+- **Auto-lock coverage.** Inactivity is measured from the last command, so the vault can lock while the user is reading a screen without interacting with it, and passive viewing does not keep it unlocked. The screen-lock signal on macOS (`com.apple.screenIsLocked`) is long-standing but undocumented. On Linux, suspend and session-lock events need systemd-logind and screen-saver events need a desktop that implements `org.freedesktop.ScreenSaver` or `org.gnome.ScreenSaver`. If a monitor is unavailable, a message is printed and only the inactivity timer and manual locking remain.
 
 ## Assumptions
 
