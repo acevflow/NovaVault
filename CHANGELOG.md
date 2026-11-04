@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vault_status` command reporting whether a vault exists and whether it is unlocked, so the UI can choose the create or unlock screen at startup.
 - Configurable auto-lock timeout: `get_settings` and `set_auto_lock_timeout` commands (1 to 60 minutes, default 5; changing it requires an unlocked vault), stored in a non-secret `settings.json` next to the vault that falls back to the default if missing or invalid.
 - `Vault::verify_password` and `Vault::verify_recovery_code` in `novavault-core`: check a secret against the in-memory key slots without changing anything.
+- UI app shell: header with skip link, main navigation and lock button, typed screen routing (a reducer, no router library) that picks the create, unlock or vault screen from `vault_status` at startup, and a startup error screen with retry.
+- Typed UI API layer (`ui/src/api`) over the Tauri commands, with a `CommandError` type mirroring the shell's error codes and user-facing messages.
+- Light and dark themes from CSS tokens, following the system by default; accessible base components (button, text and password fields, alerts, focus-managed screen headings) and a responsive layout.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed

@@ -242,6 +242,13 @@ Shell (`src-tauri`) dependencies that handle secrets or OS security events:
 | [`objc2-app-kit`](https://crates.io/crates/objc2-app-kit), [`objc2-foundation`](https://crates.io/crates/objc2-foundation), [`block2`](https://crates.io/crates/block2) (macOS only) | Sleep and screen-lock notifications | The Objective-C bindings Tauri itself uses, same versions; only `NSWorkspace` and the notification center APIs are enabled. |
 | [`zbus`](https://crates.io/crates/zbus), [`futures-util`](https://crates.io/crates/futures-util) (Linux only) | logind and screen saver D-Bus signals | Pure-Rust D-Bus with no C library, run on Tauri's Tokio runtime (no extra executor, default features off). `futures-util` is already a Tauri dependency. Talks only to local system and session buses, never the network. |
 
+UI (`ui/`) runtime dependencies. None of them implements cryptography; they are listed because they handle secrets typed by the user:
+
+| Package | Purpose | Justification |
+| ------- | ------- | ------------- |
+| [`@tauri-apps/api`](https://www.npmjs.com/package/@tauri-apps/api) | IPC | The official Tauri client: `invoke` calls the shell's commands (the global Tauri API is disabled), and `mockIPC` fakes the shell in component tests. |
+| [`@zxcvbn-ts/core`](https://www.npmjs.com/package/@zxcvbn-ts/core), [`@zxcvbn-ts/language-common`](https://www.npmjs.com/package/@zxcvbn-ts/language-common), [`@zxcvbn-ts/language-en`](https://www.npmjs.com/package/@zxcvbn-ts/language-en) | Master password strength feedback | Maintained TypeScript port of Dropbox's zxcvbn: estimates guesses from dictionaries, common passwords, keyboard patterns and dates, which a length-and-classes heuristic cannot. Runs entirely in the webview with no network access, on a password the UI already holds while the user types it. Loaded lazily so the dictionaries do not slow startup. |
+
 ### Test vectors
 
 - Argon2id: RFC 9106 §5.3 (with secret and associated data) and the reference implementation's `password`/`somesalt` vector, both run through the same parameter wiring as production derivation.
