@@ -96,11 +96,12 @@ NovaVault is **pre-alpha**. Current progress toward the MVP:
 - [x] Core crypto primitives: Argon2id key derivation, XChaCha20-Poly1305 encryption, zeroizing key types
 - [x] Core key slots: vault key wrapped under the master password and the recovery code, recovery code generation and parsing, password change and recovery code regeneration
 - [x] Core vault file format: versioned header, key slots, encrypted password, note and secret records, whole-file integrity seal, atomic saves (attachments come with the attachments feature below)
-- [ ] Create, unlock and lock a vault
-- [ ] Passwords, notes and secrets (CRUD)
+- [x] Tauri command layer: create, unlock and lock a vault; list, create, update and delete items; change the master password and regenerate the recovery code (UI screens pending)
+- [ ] Create, unlock and lock a vault (UI)
+- [ ] Passwords, notes and secrets (CRUD, UI)
 - [ ] Encrypted file attachments
-- [ ] Emergency recovery code and master password change
-- [ ] Auto-lock on inactivity, suspend and screen lock
+- [ ] Emergency recovery code and master password change (UI)
+- [x] Auto-lock on inactivity, suspend and screen lock
 - [ ] Clipboard auto-clear
 - [x] Public vault format specification (format version 0, pre-release; attachments to be specified)
 - [x] CI builds and tests on Windows, macOS and Linux

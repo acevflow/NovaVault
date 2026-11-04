@@ -46,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A whole-file integrity seal that detects removed, duplicated, reordered or replayed records.
   - Typed `VaultError` for I/O, foreign files, unsupported versions and algorithms, corruption and wrong credentials, with no secret data in any variant.
   - Round-trip, version-mismatch, truncation, per-field corruption and record-replay tests, and known-encoding vectors for the header and payload.
+- `Vault::change_password` and `Vault::regenerate_recovery_code` in `novavault-core`: rewrite only the matching key slot and save the vault; if the save fails the previous slot is kept, so memory always matches the file.
+- Tauri command layer in `src-tauri`:
+  - A vault session that is the single owner of the unlocked vault; the vault key never crosses IPC and is wiped on lock. One vault per installation, at a fixed path in the app data directory.
+  - Commands `create_vault` (returns the recovery code once), `unlock` (master password or recovery code), `lock`, `change_master_password`, `regenerate_recovery_code`, `list_items` (no secret fields), `create_item`, `update_item` and `delete_item`, run off the main thread; every edit is saved immediately.
+  - Typed, serializable command errors (`{ code, message }`) with fixed messages that never contain secrets, paths or command arguments.
+  - The capability grants only these nine commands; commands are declared in `build.rs` so any other call is rejected.
+  - Auto-lock after five minutes without a command, before system suspend and on screen lock, with one `LockMonitor` per OS (Win32 power and session notifications, AppKit notifications, logind and screen saver D-Bus signals). Auto-lock reloads the webview to discard the UI's in-memory view.
+  - Unit tests for the session, errors, DTOs, the capability allow-list and the Windows message mapping.
+- Command surface, error codes, auto-lock design and the shell's dependencies documented in `docs/architecture.md`; IPC and auto-lock residual risks in `docs/threat-model.md`.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed

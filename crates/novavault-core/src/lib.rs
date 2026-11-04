@@ -17,7 +17,8 @@
 //!
 //! - [`vault`]: the unlocked [`Vault`]: create, open with the master
 //!   password or the recovery code, list, read, insert, update, remove and
-//!   save items atomically.
+//!   save items atomically, change the master password and regenerate the
+//!   recovery code.
 //! - [`item`]: the [`Item`] model: [`PasswordItem`], [`NoteItem`] and
 //!   [`SecretItem`], identified by an [`ItemId`].
 //! - [`header`]: the versioned plaintext file [`Header`].

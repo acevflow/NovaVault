@@ -254,6 +254,61 @@ impl Vault {
         Ok(())
     }
 
+    /// Changes the master password and saves the vault.
+    ///
+    /// Only the password key slot is rewritten (fresh salt and nonce, the
+    /// given Argon2id `params`); the vault key and every record stay the
+    /// same, and the recovery code keeps working. The vault may have been
+    /// unlocked with the recovery code, which is the forgotten-password
+    /// flow.
+    ///
+    /// Unsaved item edits are written too, because the whole file is saved.
+    ///
+    /// # Errors
+    ///
+    /// - [`VaultError::Crypto`] for key derivation or randomness failures.
+    /// - Any error of [`Vault::save`].
+    ///
+    /// On error the in-memory vault keeps the previous password slot, so it
+    /// still matches the file on disk.
+    pub fn change_password(
+        &mut self,
+        new_password: &SecretSlice<u8>,
+        params: KdfParams,
+    ) -> VaultResult<()> {
+        let mut slots = self.slots.clone();
+        slots.change_password(&self.key, new_password, params, &self.header.to_bytes())?;
+        self.replace_slots_and_save(slots)
+    }
+
+    /// Replaces the recovery code with a newly generated one, saves the
+    /// vault and returns the new code, which must be shown to the user once.
+    ///
+    /// Only the recovery key slot is rewritten, so the previous code stops
+    /// working as soon as this returns. The master password is unaffected.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Vault::change_password`]; on error the previous code still
+    /// opens the vault.
+    pub fn regenerate_recovery_code(&mut self, params: KdfParams) -> VaultResult<RecoveryCode> {
+        let mut slots = self.slots.clone();
+        let code = slots.regenerate_recovery_code(&self.key, params, &self.header.to_bytes())?;
+        self.replace_slots_and_save(slots)?;
+        Ok(code)
+    }
+
+    /// Installs `slots` and saves; restores the previous slots if the save
+    /// fails, so memory never claims a credential the file does not have.
+    fn replace_slots_and_save(&mut self, slots: KeySlots) -> VaultResult<()> {
+        let previous = core::mem::replace(&mut self.slots, slots);
+        if let Err(error) = self.save() {
+            self.slots = previous;
+            return Err(error);
+        }
+        Ok(())
+    }
+
     fn search(&self, id: ItemId) -> core::result::Result<usize, usize> {
         self.records.binary_search_by_key(&id, |record| record.id)
     }
@@ -637,6 +692,60 @@ mod tests {
             open_bytes(&dir, &spliced),
             Err(VaultError::Corrupted { .. })
         ));
+    }
+
+    #[test]
+    fn changing_the_password_keeps_data_and_recovery_code() {
+        let dir = TempDir::new();
+        let (mut vault, code) = new_vault(&dir);
+        let id = vault.insert(note("kept")).unwrap();
+        vault
+            .change_password(&pw("new password"), fast_params())
+            .unwrap();
+
+        assert!(matches!(
+            open(vault.path()),
+            Err(VaultError::InvalidCredentials)
+        ));
+        let reopened = Vault::open_with_password(vault.path(), &pw("new password")).unwrap();
+        // Unsaved edits are saved together with the new slot.
+        assert_eq!(note_body(&reopened.get(id).unwrap()), "kept");
+        assert!(Vault::open_with_recovery_code(vault.path(), &code).is_ok());
+    }
+
+    #[test]
+    fn regenerating_the_recovery_code_invalidates_the_old_one() {
+        let dir = TempDir::new();
+        let (mut vault, old_code) = new_vault(&dir);
+        let id = vault.insert(note("kept")).unwrap();
+        let new_code = vault.regenerate_recovery_code(fast_params()).unwrap();
+
+        assert!(matches!(
+            Vault::open_with_recovery_code(vault.path(), &old_code),
+            Err(VaultError::InvalidCredentials)
+        ));
+        let reopened = Vault::open_with_recovery_code(vault.path(), &new_code).unwrap();
+        assert_eq!(note_body(&reopened.get(id).unwrap()), "kept");
+        assert!(open(vault.path()).is_ok());
+    }
+
+    #[test]
+    fn failed_save_keeps_previous_slots() {
+        let dir = TempDir::new();
+        let (mut vault, code) = new_vault(&dir);
+        // Make the save fail: the vault's directory no longer exists.
+        let moved = dir.path().join("moved.nvault");
+        fs::rename(vault.path(), &moved).unwrap();
+        vault.path = dir.path().join("missing").join("test.nvault");
+
+        assert!(vault.change_password(&pw("new"), fast_params()).is_err());
+        assert!(vault.regenerate_recovery_code(fast_params()).is_err());
+
+        // Saving to the original location works with the original secrets.
+        vault.path = moved;
+        vault.save().unwrap();
+        assert!(open(vault.path()).is_ok());
+        assert!(Vault::open_with_recovery_code(vault.path(), &code).is_ok());
     }
 
     #[test]
