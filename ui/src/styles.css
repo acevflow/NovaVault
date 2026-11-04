@@ -212,7 +212,8 @@ h1:focus {
   border-radius: var(--radius);
 }
 
-.card > h2 {
+.card > h2,
+.step__heading {
   margin: 0 0 var(--space-3);
   font-size: 1.25rem;
 }
@@ -311,7 +312,7 @@ h1:focus {
   border-color: var(--color-danger);
 }
 
-.field__input--code {
+.field--code .field__input {
   font-family: var(--font-mono);
   letter-spacing: 0.05em;
   text-transform: uppercase;

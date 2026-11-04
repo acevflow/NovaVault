@@ -4,6 +4,7 @@ import { lock, vaultStatus } from './api/commands';
 import { errorMessage } from './api/errors';
 import { AppShell } from './app/AppShell';
 import { initialRoute, isUnlockedRoute, routerReducer, type Route } from './app/router';
+import { CreateVaultScreen } from './screens/create/CreateVaultScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { LoadingScreen, StartupErrorScreen } from './screens/StatusScreens';
 import { ThemeProvider } from './theme/ThemeProvider';
@@ -63,6 +64,9 @@ export function App() {
           onRetry={() => {
             dispatch({ type: 'retry' });
           }}
+          onUnlocked={() => {
+            dispatch({ type: 'unlocked' });
+          }}
         />
       </AppShell>
     </ThemeProvider>
@@ -72,9 +76,10 @@ export function App() {
 interface ScreenProps {
   readonly route: Route;
   readonly onRetry: () => void;
+  readonly onUnlocked: () => void;
 }
 
-function Screen({ route, onRetry }: ScreenProps) {
+function Screen({ route, onRetry, onUnlocked }: ScreenProps) {
   switch (route.name) {
     case 'loading':
       return <LoadingScreen />;
@@ -83,6 +88,7 @@ function Screen({ route, onRetry }: ScreenProps) {
     case 'home':
       return <HomeScreen />;
     case 'create':
+      return <CreateVaultScreen onCreated={onUnlocked} />;
     case 'unlock':
     case 'settings':
       // Screens added in the following commits.

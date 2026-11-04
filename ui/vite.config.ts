@@ -19,6 +19,9 @@ export default defineConfig({
     target: 'es2022',
     // Release bundles ship without source maps.
     sourcemap: false,
+    // The password strength dictionaries are one large, lazily loaded chunk
+    // (about 1.2 MB). It is read from disk by the webview, never downloaded.
+    chunkSizeWarningLimit: 1500,
   },
   test: {
     environment: 'jsdom',
