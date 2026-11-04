@@ -11,6 +11,7 @@ Design and contributor documentation for NovaVault. Start with the architecture,
 | [Threat model](threat-model.md) | Assets, adversaries, in-scope and out-of-scope threats, mitigations and residual risks. |
 | [Vault format specification](vault-format.md) | Versioned on-disk format: header, key slots, encrypted records, integrity seal, reader rules and test vectors. Format version 0, pre-release; attachments not yet specified. |
 | [Development guide](development.md) | Setup on Windows, macOS and Linux, commands and project layout. |
+| [Clipboard behaviour](clipboard.md) | How copy and auto-clear work, and what happens on Windows, macOS, X11 and Wayland. |
 
 Cryptography and dependencies (algorithms, parameters and the justification for every cryptography-related crate) are covered in [Architecture: Cryptography and dependencies](architecture.md#cryptography-and-dependencies).
 

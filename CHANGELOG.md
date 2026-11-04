@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create-vault flow: master password with live zxcvbn strength feedback (at least “Strong” required) and confirmation, then a one-time recovery code screen with a print-only sheet, an “I have saved it” confirmation and a retype step that must match the code before the vault opens.
 - Unlock screen with keyboard-accessible tabs for the master password and the recovery code (forgotten-password flow); the secret field is cleared after a failed attempt, with specific messages for wrong, malformed, unsupported and corrupted cases. The header's Lock button wipes the vault key and returns to this screen.
 - Settings screen: change the master password (with strength feedback) and regenerate the recovery code (shown once, printable, retyped to confirm), both after re-entering the current password or recovery code; choose the auto-lock timeout (1, 5, 15, 30 or 60 minutes); choose the theme (match system, light or dark).
+- Clipboard behaviour document (`docs/clipboard.md`): how copy and auto-clear work, and per-OS behaviour on Windows, macOS, X11 and Wayland (data-control and the XWayland fallback), linked from the README and the docs index.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 - `get_item` command: an item's plain fields (title, user name, URL, timestamps) and, for each secret field, only whether it is set. Secret values never come with it.
@@ -75,6 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `clipboard_unavailable` error code.
 
 ### Changed
+
+- Architecture document describes the item commands, the read, reveal and copy data flow, the clipboard worker, the items UI and the `arboard` dependency; the threat model records clipboard exposure and per-field reveal; the development guide lists the new UI folders; README status ticks item management and clipboard auto-clear.
 
 - Architecture document describes the UI structure, routing and how the UI handles secrets; the threat model records typed secrets in the webview and printed recovery codes as residual risks; the development guide lists the UI folders; README status ticks the vault lifecycle and recovery code UI.
 - `change_master_password` and `regenerate_recovery_code` now require a `currentCredential` (the current master password, or the recovery code for the forgotten-password flow) and return `invalid_credentials` if it is wrong.
