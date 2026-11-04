@@ -1919,8 +1919,13 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 name = "novavault"
 version = "0.1.0"
 dependencies = [
+ "novavault-core",
+ "secrecy",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2680,6 +2685,7 @@ version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
 dependencies = [
+ "serde",
  "zeroize",
 ]
 

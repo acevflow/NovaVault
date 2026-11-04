@@ -8,6 +8,8 @@
 // Hide the extra console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod error;
+
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
