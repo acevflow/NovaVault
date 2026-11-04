@@ -2,6 +2,7 @@ import { ScreenHeading } from '../../components/ScreenHeading';
 import { AppearanceSection } from './AppearanceSection';
 import { AutoLockSection } from './AutoLockSection';
 import { ChangePasswordSection } from './ChangePasswordSection';
+import { ClipboardSection } from './ClipboardSection';
 import { RecoveryCodeSection } from './RecoveryCodeSection';
 
 /** Props of {@link SettingsScreen}. */
@@ -18,6 +19,7 @@ export function SettingsScreen({ onLocked }: SettingsScreenProps) {
       <ChangePasswordSection onLocked={onLocked} />
       <RecoveryCodeSection onLocked={onLocked} />
       <AutoLockSection onLocked={onLocked} />
+      <ClipboardSection onLocked={onLocked} />
       <AppearanceSection />
     </div>
   );

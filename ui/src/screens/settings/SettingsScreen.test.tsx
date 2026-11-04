@@ -9,7 +9,10 @@ import { SettingsScreen } from './SettingsScreen';
 const STRONG = 'violet anchor gravel summit 42 lantern';
 
 function renderSettings(handlers: CommandHandlers, onLocked = vi.fn()) {
-  const calls = mockCommands({ get_settings: () => ({ autoLockMinutes: 5 }), ...handlers });
+  const calls = mockCommands({
+    get_settings: () => ({ autoLockMinutes: 5, clipboardClearSeconds: 30 }),
+    ...handlers,
+  });
   render(
     <ThemeProvider>
       <SettingsScreen onLocked={onLocked} />
@@ -144,6 +147,16 @@ describe('SettingsScreen: auto-lock and appearance', () => {
     await vi.waitFor(() => {
       expect(onLocked).toHaveBeenCalledOnce();
     });
+  });
+
+  it('loads and saves the clipboard clear delay', async () => {
+    const { calls, user } = renderSettings({ set_clipboard_clear_delay: () => null });
+    const select = await section('Clipboard').findByLabelText('Clear the clipboard after');
+    expect(select).toHaveValue('30');
+    await user.selectOptions(select, '1 minute');
+    await user.click(section('Clipboard').getByRole('button', { name: 'Save' }));
+    expect(await section('Clipboard').findByRole('status')).toHaveTextContent('after 1 minute');
+    expect(calls.at(-1)).toEqual({ command: 'set_clipboard_clear_delay', args: { seconds: 60 } });
   });
 
   it('switches the theme', async () => {

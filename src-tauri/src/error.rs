@@ -63,6 +63,10 @@ pub enum CommandError {
     #[error("the vault file could not be read or written")]
     Storage,
 
+    /// The system clipboard could not be opened or written.
+    #[error("the clipboard is not available")]
+    ClipboardUnavailable,
+
     /// An unexpected internal failure (for example, the system random
     /// number generator failed).
     #[error("internal error")]
@@ -84,6 +88,7 @@ impl CommandError {
             Self::UnsupportedVault => "unsupported_vault",
             Self::Corrupted => "corrupted",
             Self::Storage => "storage",
+            Self::ClipboardUnavailable => "clipboard_unavailable",
             Self::Internal => "internal",
         }
     }
@@ -140,7 +145,7 @@ pub type CommandResult<T> = Result<T, CommandError>;
 mod tests {
     use super::*;
 
-    const ALL: [CommandError; 12] = [
+    const ALL: [CommandError; 13] = [
         CommandError::Locked,
         CommandError::VaultNotFound,
         CommandError::VaultExists,
@@ -152,6 +157,7 @@ mod tests {
         CommandError::UnsupportedVault,
         CommandError::Corrupted,
         CommandError::Storage,
+        CommandError::ClipboardUnavailable,
         CommandError::Internal,
     ];
 

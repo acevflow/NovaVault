@@ -5,6 +5,7 @@ import { errorMessage, isCommandError } from '../../api/errors';
 import type { ItemDetails as Details } from '../../api/types';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
+import { CopyButton } from '../../components/CopyButton';
 import { ScreenHeading } from '../../components/ScreenHeading';
 import { SecretField } from '../../components/SecretField';
 import { ConfirmDelete } from './ConfirmDelete';
@@ -134,14 +135,14 @@ function Fields({ details, onLocked }: FieldsProps) {
     case 'password':
       return (
         <>
-          <PlainField label="Username" value={details.username} />
+          <PlainField {...common} label="Username" field="username" value={details.username} />
           <SecretField
             {...common}
             label="Password"
             field="password"
             hasValue={details.hasPassword}
           />
-          <PlainField label="Website" value={details.url} />
+          <PlainField {...common} label="Website" field="url" value={details.url} />
           <SecretField
             {...common}
             label="Notes"
@@ -172,16 +173,30 @@ function Fields({ details, onLocked }: FieldsProps) {
 }
 
 interface PlainFieldProps {
+  readonly itemId: string;
+  readonly field: 'username' | 'url';
   readonly label: string;
   readonly value: string;
+  readonly onLocked: () => void;
 }
 
-/** A non-secret field, always visible. */
-function PlainField({ label, value }: PlainFieldProps) {
+/** A non-secret field, always visible, with a copy button. */
+function PlainField({ itemId, field, label, value, onLocked }: PlainFieldProps) {
   return (
     <div className="details__row">
       <dt>{label}</dt>
-      <dd>{value === '' ? <span className="muted">Empty</span> : value}</dd>
+      <dd className="secret-field">
+        {value === '' ? (
+          <span className="muted">Empty</span>
+        ) : (
+          <>
+            <span className="secret-field__value secret-field__value--plain">{value}</span>
+            <span className="secret-field__actions">
+              <CopyButton itemId={itemId} field={field} label={label} onLocked={onLocked} />
+            </span>
+          </>
+        )}
+      </dd>
     </div>
   );
 }

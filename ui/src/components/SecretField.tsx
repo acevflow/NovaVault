@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { revealItemField } from '../api/commands';
 import { errorMessage, isCommandError } from '../api/errors';
 import type { SecretItemField } from '../api/types';
+import { CopyButton } from './CopyButton';
 
 /** Props of {@link SecretField}. */
 export interface SecretFieldProps {
@@ -98,6 +99,7 @@ export function SecretField({
               >
                 {value === null ? 'Reveal' : 'Hide'}
               </button>
+              <CopyButton itemId={itemId} field={field} label={label} onLocked={onLocked} />
             </span>
           </>
         )}

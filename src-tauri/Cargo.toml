@@ -12,6 +12,12 @@ publish.workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Clipboard access from Rust, so copied secrets never pass through the
+# webview. No image support; Wayland via the data-control protocol.
+# Justified in docs/architecture.md.
+arboard = { version = "3.7.0", default-features = false, features = [
+    "wayland-data-control",
+] }
 novavault-core = { path = "../crates/novavault-core" }
 # `serde` lets command inputs deserialize straight into `SecretString`.
 secrecy = { version = "0.10.3", features = ["serde"] }

@@ -37,6 +37,8 @@ export interface RecoveryCodeResponse {
 export interface Settings {
   /** Minutes without activity before the vault locks itself. */
   readonly autoLockMinutes: number;
+  /** Seconds before a copied field is cleared from the clipboard. */
+  readonly clipboardClearSeconds: number;
 }
 
 /** The type of a vault item. */
@@ -132,6 +134,12 @@ export type ItemField = 'username' | 'password' | 'url' | 'notes' | 'body' | 'va
 
 /** A secret field: hidden until the user reveals it. */
 export type SecretItemField = Exclude<ItemField, 'username' | 'url'>;
+
+/** The outcome of copying a field; the value itself never comes back. */
+export interface CopyResult {
+  /** Seconds until the shell clears the clipboard. */
+  readonly clearAfterSeconds: number;
+}
 
 /** A revealed secret field. */
 export interface RevealedValue {

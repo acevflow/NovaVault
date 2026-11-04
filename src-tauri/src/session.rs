@@ -87,6 +87,26 @@ impl Session {
         Ok(())
     }
 
+    /// Sets the clipboard clear delay and saves the settings.
+    ///
+    /// Requires an unlocked vault, like [`Session::set_auto_lock_minutes`].
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] if
+    /// `seconds` is out of bounds, or [`CommandError::Storage`] if the
+    /// file cannot be written (the previous value is then kept).
+    pub fn set_clipboard_clear_seconds(&mut self, seconds: u32) -> CommandResult<()> {
+        self.vault()?;
+        let mut updated = self.settings;
+        updated.set_clipboard_clear_seconds(seconds)?;
+        updated
+            .save(&self.settings_path)
+            .map_err(|_| CommandError::Storage)?;
+        self.settings = updated;
+        Ok(())
+    }
+
     /// Records user activity at `now`, restarting the inactivity timer.
     pub fn touch(&mut self, now: Instant) {
         self.last_activity = now;
@@ -871,6 +891,26 @@ mod tests {
         assert!(!session.is_unlocked());
         // A clock reading before the last activity never panics or locks.
         assert!(!session.lock_if_idle(start));
+    }
+
+    #[test]
+    fn clipboard_delay_is_configurable_and_persisted() {
+        let dir = TempDir::new();
+        let path = dir.path().join("vault.nvault");
+        let mut session = Session::new(path.clone(), fast_params(), Instant::now());
+        assert_eq!(
+            session.set_clipboard_clear_seconds(10),
+            Err(CommandError::Locked),
+            "changing the delay needs an unlocked vault"
+        );
+        session.create(&s(PASSWORD)).unwrap();
+        assert_eq!(
+            session.set_clipboard_clear_seconds(1),
+            Err(CommandError::InvalidInput)
+        );
+        session.set_clipboard_clear_seconds(10).unwrap();
+        let reloaded = Session::new(path, fast_params(), Instant::now());
+        assert_eq!(reloaded.settings().clipboard_clear_seconds(), 10);
     }
 
     #[test]

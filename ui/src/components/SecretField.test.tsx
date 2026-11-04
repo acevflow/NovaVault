@@ -49,6 +49,26 @@ describe('SecretField', () => {
     expect(screen.getByText('Hidden')).toBeInTheDocument();
   });
 
+  it('copies through the shell without revealing the value', async () => {
+    const { calls, user } = renderField({ copy_item_field: () => ({ clearAfterSeconds: 30 }) });
+    await user.click(screen.getByRole('button', { name: 'Copy password' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Copied. The clipboard clears in 30 seconds.',
+    );
+    expect(calls).toEqual([{ command: 'copy_item_field', args: { id: ID, field: 'password' } }]);
+    expect(screen.getByText('Hidden')).toBeInTheDocument();
+  });
+
+  it('reports a clipboard that is not available', async () => {
+    const { user } = renderField({
+      copy_item_field: () => {
+        throw shellError('clipboard_unavailable');
+      },
+    });
+    await user.click(screen.getByRole('button', { name: 'Copy password' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('clipboard is not available');
+  });
+
   it('says when the field is empty and offers no reveal', () => {
     renderField({}, false);
     expect(screen.getByText('Empty')).toBeInTheDocument();

@@ -8,10 +8,12 @@
 //! Modules:
 //!
 //! - `autolock`: locking on inactivity and OS events, and resetting the UI.
+//! - `clipboard`: copying item fields and clearing them again.
 //! - `os_lock`: per-OS suspend and screen-lock monitors.
 //! - `commands`: the Tauri command handlers (the whole IPC surface).
 //! - `session`: the unlocked vault and the logic behind every command.
-//! - `settings`: the non-secret settings file (auto-lock timeout).
+//! - `settings`: the non-secret settings file (auto-lock timeout,
+//!   clipboard clear delay).
 //! - `dto`: command inputs and outputs.
 //! - `error`: the typed, secret-free errors returned to the UI.
 
@@ -19,6 +21,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autolock;
+mod clipboard;
 mod commands;
 mod dto;
 mod error;
@@ -31,9 +34,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use novavault_core::KdfParams;
-use tauri::Manager;
+use tauri::{Manager, RunEvent};
 
 use crate::autolock::LockReason;
+use crate::clipboard::{ClipboardManager, SystemClipboard};
 use crate::commands::AppState;
 use crate::os_lock::LockSink;
 use crate::session::Session;
@@ -45,11 +49,12 @@ use crate::session::Session;
 const VAULT_FILE_NAME: &str = "vault.nvault";
 
 fn main() -> ExitCode {
-    let result = tauri::Builder::default()
+    let built = tauri::Builder::default()
         .setup(|app| {
             let path = app.path().app_data_dir()?.join(VAULT_FILE_NAME);
             let session = Session::new(path, KdfParams::default(), Instant::now());
             app.manage(AppState::new(session));
+            app.manage(ClipboardManager::start(SystemClipboard::open));
             autolock::start_idle_timer(app.handle().clone());
             start_os_lock_monitor(app.handle().clone());
             Ok(())
@@ -65,22 +70,34 @@ fn main() -> ExitCode {
             commands::regenerate_recovery_code,
             commands::get_settings,
             commands::set_auto_lock_timeout,
+            commands::set_clipboard_clear_delay,
             commands::list_items,
             commands::get_item,
             commands::reveal_item_field,
+            commands::copy_item_field,
             commands::create_item,
             commands::update_item,
             commands::delete_item,
         ])
-        .run(tauri::generate_context!());
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
+        .build(tauri::generate_context!());
+    let app = match built {
+        Ok(app) => app,
         Err(error) => {
-            // Startup and runtime errors from Tauri carry no vault secrets.
+            // Startup errors from Tauri carry no vault secrets.
             eprintln!("NovaVault failed: {error}");
-            ExitCode::FAILURE
+            return ExitCode::FAILURE;
         }
-    }
+    };
+    app.run(|handle, event| {
+        if let RunEvent::Exit = event {
+            // Do not leave a copied secret behind, and release the
+            // clipboard before an X11 clipboard manager can take it over.
+            if let Some(clipboard) = handle.try_state::<ClipboardManager>() {
+                clipboard.shutdown();
+            }
+        }
+    });
+    ExitCode::SUCCESS
 }
 
 /// Locks the vault on system suspend and screen lock.
@@ -122,7 +139,7 @@ mod tests {
             .collect();
         granted.sort();
 
-        assert_eq!(declared.len(), 14);
+        assert_eq!(declared.len(), 16);
         assert_eq!(granted, declared);
     }
 }

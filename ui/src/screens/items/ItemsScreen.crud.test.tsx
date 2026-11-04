@@ -39,6 +39,7 @@ function setUp() {
     list_items: summaries,
     get_item: ({ id }: CommandArgs) => details.get(id as string),
     reveal_item_field: () => ({ value: 'hunter2' }),
+    copy_item_field: () => ({ clearAfterSeconds: 60 }),
     create_item: ({ item }: CommandArgs) => {
       const input = item as { kind: 'note'; title: string; body: string };
       details.set(NEW_ID, {
@@ -88,6 +89,23 @@ describe('ItemsScreen: view', () => {
     expect(details.queryByText('hunter2')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^GitHub/ })).toHaveAttribute('aria-current', 'true');
     expect(argsOf(calls, 'get_item')).toEqual([{ id: GITHUB_ID }]);
+    expect(argsOf(calls, 'reveal_item_field')).toEqual([]);
+  });
+});
+
+describe('ItemsScreen: copy', () => {
+  it('copies plain and secret fields through the shell', async () => {
+    const { calls, user } = setUp();
+    const details = await openGitHub(user);
+    await user.click(await details.findByRole('button', { name: 'Copy username' }));
+    expect(
+      await details.findByText('Copied. The clipboard clears in 1 minute.'),
+    ).toBeInTheDocument();
+    await user.click(details.getByRole('button', { name: 'Copy password' }));
+    expect(argsOf(calls, 'copy_item_field')).toEqual([
+      { id: GITHUB_ID, field: 'username' },
+      { id: GITHUB_ID, field: 'password' },
+    ]);
     expect(argsOf(calls, 'reveal_item_field')).toEqual([]);
   });
 });

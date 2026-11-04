@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { mockCommands, shellError, TEST_RECOVERY_CODE } from '../test/ipc';
 import {
   changeMasterPassword,
+  copyItemField,
   createItem,
   createVault,
   deleteItem,
@@ -12,6 +13,7 @@ import {
   regenerateRecoveryCode,
   revealItemField,
   setAutoLockTimeout,
+  setClipboardClearDelay,
   unlock,
   updateItem,
   vaultStatus,
@@ -26,7 +28,8 @@ describe('commands', () => {
       unlock: () => null,
       change_master_password: () => null,
       regenerate_recovery_code: () => ({ recoveryCode: TEST_RECOVERY_CODE }),
-      get_settings: () => ({ autoLockMinutes: 5 }),
+      get_settings: () => ({ autoLockMinutes: 5, clipboardClearSeconds: 30 }),
+      set_clipboard_clear_delay: () => null,
       set_auto_lock_timeout: () => null,
     });
     const current = { method: 'password', secret: 'old' } as const;
@@ -36,8 +39,9 @@ describe('commands', () => {
     await unlock({ method: 'recoveryCode', secret: 'code' });
     await changeMasterPassword(current, 'new');
     await expect(regenerateRecoveryCode(current)).resolves.toBe(TEST_RECOVERY_CODE);
-    await expect(getSettings()).resolves.toEqual({ autoLockMinutes: 5 });
+    await expect(getSettings()).resolves.toEqual({ autoLockMinutes: 5, clipboardClearSeconds: 30 });
     await setAutoLockTimeout(15);
+    await setClipboardClearDelay(60);
 
     expect(calls.map(({ command, args }) => [command, args])).toEqual([
       ['vault_status', {}],
@@ -47,6 +51,7 @@ describe('commands', () => {
       ['regenerate_recovery_code', { currentCredential: current }],
       ['get_settings', {}],
       ['set_auto_lock_timeout', { minutes: 15 }],
+      ['set_clipboard_clear_delay', { seconds: 60 }],
     ]);
   });
 
@@ -67,6 +72,7 @@ describe('commands', () => {
       create_item: () => id,
       update_item: () => null,
       delete_item: () => null,
+      copy_item_field: () => ({ clearAfterSeconds: 30 }),
     });
 
     await expect(listItems()).resolves.toEqual([]);
@@ -75,6 +81,7 @@ describe('commands', () => {
     await expect(createItem({ kind: 'note', title: 'Diary', body: 'x' })).resolves.toBe(id);
     await updateItem(id, { kind: 'note', title: 'Journal', body: null });
     await deleteItem(id);
+    await expect(copyItemField(id, 'username')).resolves.toBe(30);
 
     expect(calls.map(({ command, args }) => [command, args])).toEqual([
       ['list_items', {}],
@@ -83,6 +90,7 @@ describe('commands', () => {
       ['create_item', { item: { kind: 'note', title: 'Diary', body: 'x' } }],
       ['update_item', { id, item: { kind: 'note', title: 'Journal', body: null } }],
       ['delete_item', { id }],
+      ['copy_item_field', { id, field: 'username' }],
     ]);
   });
 

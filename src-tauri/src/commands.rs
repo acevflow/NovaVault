@@ -16,9 +16,10 @@ use std::time::Instant;
 use secrecy::SecretString;
 use tauri::{AppHandle, Manager};
 
+use crate::clipboard::ClipboardManager;
 use crate::dto::{
-    Credential, ItemDetailsDto, ItemField, ItemInput, ItemSummaryDto, ItemUpdate, RecoveryCodeDto,
-    RevealedValueDto, VaultStatusDto,
+    CopyResultDto, Credential, ItemDetailsDto, ItemField, ItemInput, ItemSummaryDto, ItemUpdate,
+    RecoveryCodeDto, RevealedValueDto, VaultStatusDto,
 };
 use crate::error::{CommandError, CommandResult};
 use crate::session::Session;
@@ -84,9 +85,11 @@ pub async fn unlock(app: AppHandle, credential: Credential) -> CommandResult<()>
     run(app, move |session| session.unlock(&credential)).await
 }
 
-/// Locks the vault, wiping the vault key from memory.
+/// Locks the vault, wiping the vault key from memory, and clears a copied
+/// field from the clipboard.
 #[tauri::command]
 pub async fn lock(app: AppHandle) -> CommandResult<()> {
+    app.state::<ClipboardManager>().clear();
     run(app, |session| {
         session.lock();
         Ok(())
@@ -131,6 +134,43 @@ pub async fn get_settings(app: AppHandle) -> CommandResult<Settings> {
 #[tauri::command]
 pub async fn set_auto_lock_timeout(app: AppHandle, minutes: u32) -> CommandResult<()> {
     run(app, move |session| session.set_auto_lock_minutes(minutes)).await
+}
+
+/// Sets how long a copied field stays on the clipboard, in seconds (5 to
+/// 300).
+#[tauri::command]
+pub async fn set_clipboard_clear_delay(app: AppHandle, seconds: u32) -> CommandResult<()> {
+    run(app, move |session| {
+        session.set_clipboard_clear_seconds(seconds)
+    })
+    .await
+}
+
+/// Copies one field of item `id` to the clipboard and schedules it to be
+/// cleared. The value is read and copied in Rust; the UI only learns the
+/// delay.
+#[tauri::command]
+pub async fn copy_item_field(
+    app: AppHandle,
+    id: String,
+    field: ItemField,
+) -> CommandResult<CopyResultDto> {
+    let worker = app.clone();
+    let (text, settings) = run(app, move |session| {
+        Ok((session.field_text(&id, field)?, session.settings()))
+    })
+    .await?;
+    // Outside the session lock: the clipboard may be slow to answer.
+    tauri::async_runtime::spawn_blocking(move || {
+        worker
+            .state::<ClipboardManager>()
+            .copy(text, settings.clipboard_clear_delay())
+    })
+    .await
+    .map_err(|_| CommandError::Internal)??;
+    Ok(CopyResultDto {
+        clear_after_seconds: settings.clipboard_clear_seconds(),
+    })
 }
 
 /// Lists the items of the unlocked vault, without secret fields.

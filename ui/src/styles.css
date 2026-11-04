@@ -716,3 +716,16 @@ h1:focus {
   white-space: nowrap;
   border: 0;
 }
+
+.secret-field__value--plain {
+  font-family: inherit;
+}
+
+.copy-status {
+  flex-basis: 100%;
+  font-size: 0.875rem;
+}
+
+.copy-status:empty {
+  display: none;
+}

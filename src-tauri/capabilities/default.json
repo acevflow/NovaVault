@@ -12,9 +12,11 @@
     "allow-regenerate-recovery-code",
     "allow-get-settings",
     "allow-set-auto-lock-timeout",
+    "allow-set-clipboard-clear-delay",
     "allow-list-items",
     "allow-get-item",
     "allow-reveal-item-field",
+    "allow-copy-item-field",
     "allow-create-item",
     "allow-update-item",
     "allow-delete-item"

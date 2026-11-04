@@ -10,7 +10,9 @@ import { invoke, type InvokeArgs } from '@tauri-apps/api/core';
 
 import { toCommandError, type CommandError } from './errors';
 import type {
+  CopyResult,
   Credential,
+  ItemField,
   ItemDetails,
   ItemInput,
   ItemSummary,
@@ -32,9 +34,11 @@ export type CommandName =
   | 'regenerate_recovery_code'
   | 'get_settings'
   | 'set_auto_lock_timeout'
+  | 'set_clipboard_clear_delay'
   | 'list_items'
   | 'get_item'
   | 'reveal_item_field'
+  | 'copy_item_field'
   | 'create_item'
   | 'update_item'
   | 'delete_item';
@@ -106,6 +110,23 @@ export function getSettings(): Promise<Settings> {
 /** Sets the inactivity auto-lock timeout, in minutes. Requires an unlocked vault. */
 export function setAutoLockTimeout(minutes: number): Promise<void> {
   return call('set_auto_lock_timeout', { minutes });
+}
+
+/** Sets how long a copied field stays on the clipboard, in seconds. Requires an unlocked vault. */
+export function setClipboardClearDelay(seconds: number): Promise<void> {
+  return call('set_clipboard_clear_delay', { seconds });
+}
+
+/**
+ * Copies one field of an item to the clipboard. The shell reads and copies
+ * the value itself, so it never reaches the UI, and clears the clipboard
+ * after the configured delay.
+ *
+ * @returns Seconds until the clipboard is cleared.
+ */
+export async function copyItemField(id: string, field: ItemField): Promise<number> {
+  const response = await call<CopyResult>('copy_item_field', { id, field });
+  return response.clearAfterSeconds;
 }
 
 /** Lists the items of the unlocked vault, without secret fields. */

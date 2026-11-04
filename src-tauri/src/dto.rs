@@ -367,6 +367,17 @@ impl Serialize for RevealedValueDto {
     }
 }
 
+/// The outcome of copying a field to the clipboard. The value itself never
+/// comes back to the UI.
+///
+/// JSON: `{ "clearAfterSeconds": 30 }`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyResultDto {
+    /// Seconds until the clipboard is cleared.
+    pub clear_after_seconds: u32,
+}
+
 /// The secret used to unlock the vault.
 ///
 /// JSON: `{ "method": "password" | "recoveryCode", "secret": "…" }`.

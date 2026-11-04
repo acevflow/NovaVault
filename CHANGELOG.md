@@ -70,6 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `reveal_item_field` command: returns one secret field (password, notes, note body or secret value) when the user asks to see it.
 - Item list on the vault screen: every password, note and secret sorted by title with its type, a search by title (ignoring case and accents), a type filter, a live result count, empty and no-match states, and a retry if loading fails. Typed UI wrappers for the item commands.
 - Create, view, edit and delete passwords, notes and secrets. Item details show plain fields and keep every secret field hidden until the user reveals it (fetched from the shell on demand and dropped when hidden). The edit form leaves secret fields empty and keeps their stored values unless the user types a new one or loads the current one with “Reveal current …”. Deleting asks for confirmation (focus starts on Cancel; Escape cancels). Titles are required.
+- Copy to clipboard with automatic clearing, handled in Rust: `copy_item_field` reads the field and copies it from the shell, so the value never reaches the UI. The clipboard is cleared after a configurable delay, when the vault locks (manually or automatically) and when the app exits, but only if it still holds the copied value. Clipboard history and cloud sync are asked to skip copied values (Windows history and cloud formats, macOS `org.nspasteboard.ConcealedType`, Linux `x-kde-passwordManagerHint`). Copy buttons for every field on the item details, with a polite status announcing when the clipboard clears.
+- Clipboard clear delay setting: `set_clipboard_clear_delay` command (5 to 300 seconds, default 30; requires an unlocked vault), stored in `settings.json` (older files without it still load), and a Clipboard section in Settings (10 seconds, 30 seconds, 1 minute or 2 minutes).
+- `clipboard_unavailable` error code.
 
 ### Changed
 
