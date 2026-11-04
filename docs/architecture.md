@@ -127,7 +127,7 @@ Triggered by the user, by the inactivity timer, or by OS events (suspend, screen
 
 ### Change master password or regenerate the recovery code
 
-With the vault unlocked, the core derives a new wrapping key from the new secret and re-wraps the existing vault key, replacing only the corresponding key slot. Records and attachments are not re-encrypted. Regenerating the recovery code replaces the recovery slot, which invalidates the previous code.
+With the vault unlocked, the user first re-enters the current master password (or the recovery code, if the password is forgotten); the core checks it by unwrapping the matching in-memory key slot, so an unattended unlocked app cannot be taken over. The core then derives a new wrapping key from the new secret and re-wraps the existing vault key, replacing only the corresponding key slot. Records and attachments are not re-encrypted. Regenerating the recovery code replaces the recovery slot, which invalidates the previous code.
 
 ## Tauri command surface
 
@@ -139,7 +139,7 @@ With the vault unlocked, the core derives a new wrapping key from the new secret
 
 ### Commands
 
-Arguments are camelCase in JavaScript (`invoke('change_master_password', { newPassword })`).
+Arguments are camelCase in JavaScript (`invoke('change_master_password', { currentCredential, newPassword })`). `credential` and `currentCredential` share one shape: `{ method: "password" | "recoveryCode", secret }`.
 
 | Command | Arguments | Returns | Notes |
 | ------- | --------- | ------- | ----- |
@@ -147,8 +147,8 @@ Arguments are camelCase in JavaScript (`invoke('change_master_password', { newPa
 | `create_vault` | `password` | `{ recoveryCode }` | Creates the vault and leaves it unlocked. The code (`XXXX-XXXX-…`) is returned only here; the UI must show it once and have the user confirm it was saved. |
 | `unlock` | `credential`: `{ method: "password" \| "recoveryCode", secret }` | nothing | Locks any open vault first, so a failed attempt leaves the app locked. Recovery codes are accepted in any case, with or without dashes. |
 | `lock` | none | nothing | Wipes the vault key. |
-| `change_master_password` | `newPassword` | nothing | Re-wraps the vault key in the password slot. Works after unlocking with the recovery code (forgotten-password flow). |
-| `regenerate_recovery_code` | none | `{ recoveryCode }` | Replaces the recovery slot; the previous code stops working. |
+| `change_master_password` | `currentCredential`, `newPassword` | nothing | Checks `currentCredential` first, then re-wraps the vault key in the password slot. The recovery code is accepted as the current credential (forgotten-password flow). |
+| `regenerate_recovery_code` | `currentCredential` | `{ recoveryCode }` | Checks `currentCredential` first, then replaces the recovery slot; the previous code stops working. |
 | `get_settings` | none | `{ autoLockMinutes }` | Works while locked; settings are not secret. |
 | `set_auto_lock_timeout` | `minutes` | nothing | Requires an unlocked vault. `invalid_input` outside 1 to 60. |
 | `list_items` | none | `[{ id, kind, title, createdAtMs, updatedAtMs }]` | No secret fields. `kind` is `"password"`, `"note"` or `"secret"`; `id` is 32 hex digits. |

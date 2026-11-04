@@ -298,6 +298,47 @@ impl Vault {
         Ok(code)
     }
 
+    /// Checks that `password` is the current master password, by
+    /// unwrapping the in-memory password slot (one Argon2id derivation).
+    ///
+    /// Used to re-authenticate the user before sensitive changes such as a
+    /// password change or recovery code regeneration, so an unlocked but
+    /// unattended vault cannot be taken over. Nothing is changed or saved.
+    ///
+    /// # Errors
+    ///
+    /// - [`VaultError::InvalidCredentials`] if the password is wrong.
+    /// - [`VaultError::Crypto`] for key derivation failures.
+    pub fn verify_password(&self, password: &SecretSlice<u8>) -> VaultResult<()> {
+        // The unwrapped key is dropped (and wiped) at once: a successful
+        // AEAD unwrap is the proof; the key itself is already held.
+        self.slots
+            .unlock_with_password(password, &self.header.to_bytes())
+            .map(drop)
+            .map_err(|error| match error {
+                CryptoError::Decryption => VaultError::InvalidCredentials,
+                other => other.into(),
+            })
+    }
+
+    /// Checks that `code` is the current recovery code, by unwrapping the
+    /// in-memory recovery slot. The counterpart of
+    /// [`Vault::verify_password`] for users who unlocked with the recovery
+    /// code because they forgot the password.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Vault::verify_password`].
+    pub fn verify_recovery_code(&self, code: &RecoveryCode) -> VaultResult<()> {
+        self.slots
+            .unlock_with_recovery_code(code, &self.header.to_bytes())
+            .map(drop)
+            .map_err(|error| match error {
+                CryptoError::Decryption => VaultError::InvalidCredentials,
+                other => other.into(),
+            })
+    }
+
     /// Installs `slots` and saves; restores the previous slots if the save
     /// fails, so memory never claims a credential the file does not have.
     fn replace_slots_and_save(&mut self, slots: KeySlots) -> VaultResult<()> {
@@ -692,6 +733,38 @@ mod tests {
             open_bytes(&dir, &spliced),
             Err(VaultError::Corrupted { .. })
         ));
+    }
+
+    #[test]
+    fn verify_password_accepts_only_the_current_password() {
+        let dir = TempDir::new();
+        let (mut vault, _code) = new_vault(&dir);
+        vault.verify_password(&pw(PASSWORD)).unwrap();
+        assert!(matches!(
+            vault.verify_password(&pw("wrong")),
+            Err(VaultError::InvalidCredentials)
+        ));
+        vault
+            .change_password(&pw("new password"), fast_params())
+            .unwrap();
+        assert!(matches!(
+            vault.verify_password(&pw(PASSWORD)),
+            Err(VaultError::InvalidCredentials)
+        ));
+        vault.verify_password(&pw("new password")).unwrap();
+    }
+
+    #[test]
+    fn verify_recovery_code_accepts_only_the_current_code() {
+        let dir = TempDir::new();
+        let (mut vault, old) = new_vault(&dir);
+        vault.verify_recovery_code(&old).unwrap();
+        let new = vault.regenerate_recovery_code(fast_params()).unwrap();
+        assert!(matches!(
+            vault.verify_recovery_code(&old),
+            Err(VaultError::InvalidCredentials)
+        ));
+        vault.verify_recovery_code(&new).unwrap();
     }
 
     #[test]

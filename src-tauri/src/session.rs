@@ -173,29 +173,59 @@ impl Session {
             && self.lock()
     }
 
-    /// Changes the master password. The recovery code keeps working.
+    /// Changes the master password after checking `current` (the current
+    /// password, or the recovery code for the forgotten-password flow).
+    /// The recovery code keeps working.
     ///
     /// # Errors
     ///
-    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] for an
-    /// empty password, or a save failure.
-    pub fn change_master_password(&mut self, new_password: &SecretString) -> CommandResult<()> {
+    /// [`CommandError::Locked`], [`CommandError::InvalidCredentials`] or
+    /// [`CommandError::InvalidRecoveryCode`] if `current` is wrong,
+    /// [`CommandError::InvalidInput`] for an empty password, or a save
+    /// failure.
+    pub fn change_master_password(
+        &mut self,
+        current: &Credential,
+        new_password: &SecretString,
+    ) -> CommandResult<()> {
+        self.verify(current)?;
         let new_password = password_bytes(new_password)?;
         let params = self.params;
         self.vault_mut()?.change_password(&new_password, params)?;
         Ok(())
     }
 
-    /// Replaces the recovery code; the previous one stops working. Returns
-    /// the new code, which the UI must show once.
+    /// Replaces the recovery code after checking `current`; the previous
+    /// code stops working. Returns the new code, which the UI must show
+    /// once.
     ///
     /// # Errors
     ///
-    /// [`CommandError::Locked`] or a save failure.
-    pub fn regenerate_recovery_code(&mut self) -> CommandResult<RecoveryCodeDto> {
+    /// [`CommandError::Locked`], the errors of a wrong `current` (see
+    /// [`Session::change_master_password`]) or a save failure.
+    pub fn regenerate_recovery_code(
+        &mut self,
+        current: &Credential,
+    ) -> CommandResult<RecoveryCodeDto> {
+        self.verify(current)?;
         let params = self.params;
         let code = self.vault_mut()?.regenerate_recovery_code(params)?;
         Ok(RecoveryCodeDto::from(&code))
+    }
+
+    /// Re-authenticates the user before a key slot change, so someone at
+    /// an unlocked but unattended app cannot take the vault over.
+    fn verify(&self, current: &Credential) -> CommandResult<()> {
+        let vault = self.vault()?;
+        match current {
+            Credential::Password(password) => {
+                vault.verify_password(&password_bytes(password)?)?;
+            }
+            Credential::RecoveryCode(code) => {
+                vault.verify_recovery_code(&RecoveryCode::parse(code.expose_secret())?)?;
+            }
+        }
+        Ok(())
     }
 
     /// Lists every item's identifier, type, title and timestamps.
@@ -450,7 +480,7 @@ mod tests {
         );
         session.create(&s(PASSWORD)).unwrap();
         assert_eq!(
-            session.change_master_password(&s("")),
+            session.change_master_password(&with_password(PASSWORD), &s("")),
             Err(CommandError::InvalidInput)
         );
     }
@@ -474,11 +504,13 @@ mod tests {
         );
         assert_eq!(session.delete_item(&id), Err(CommandError::Locked));
         assert_eq!(
-            session.change_master_password(&s("new")),
+            session.change_master_password(&with_password(PASSWORD), &s("new")),
             Err(CommandError::Locked)
         );
         assert_eq!(
-            session.regenerate_recovery_code().err(),
+            session
+                .regenerate_recovery_code(&with_password(PASSWORD))
+                .err(),
             Some(CommandError::Locked)
         );
     }
@@ -557,7 +589,9 @@ mod tests {
         let mut session = session(&dir);
         let code = code_text(&session.create(&s(PASSWORD)).unwrap());
         session.create_item(note("Diary", "x")).unwrap();
-        session.change_master_password(&s("new password")).unwrap();
+        session
+            .change_master_password(&with_password(PASSWORD), &s("new password"))
+            .unwrap();
         session.lock();
 
         assert_eq!(
@@ -575,7 +609,11 @@ mod tests {
         let dir = TempDir::new();
         let mut session = session(&dir);
         let old = code_text(&session.create(&s(PASSWORD)).unwrap());
-        let new = code_text(&session.regenerate_recovery_code().unwrap());
+        let new = code_text(
+            &session
+                .regenerate_recovery_code(&with_password(PASSWORD))
+                .unwrap(),
+        );
         assert_ne!(old, new);
         session.lock();
 
@@ -586,6 +624,41 @@ mod tests {
         session.unlock(&Credential::RecoveryCode(s(&new))).unwrap();
         session.lock();
         session.unlock(&with_password(PASSWORD)).unwrap();
+    }
+
+    #[test]
+    fn key_slot_changes_require_the_current_secret() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        let code = code_text(&session.create(&s(PASSWORD)).unwrap());
+
+        assert_eq!(
+            session.change_master_password(&with_password("wrong"), &s("new password")),
+            Err(CommandError::InvalidCredentials)
+        );
+        assert_eq!(
+            session
+                .regenerate_recovery_code(&with_password("wrong"))
+                .err(),
+            Some(CommandError::InvalidCredentials)
+        );
+        assert_eq!(
+            session
+                .regenerate_recovery_code(&Credential::RecoveryCode(s("typo")))
+                .err(),
+            Some(CommandError::InvalidRecoveryCode)
+        );
+        // Nothing changed: the vault stays unlocked and both secrets work.
+        assert!(session.is_unlocked());
+        session.lock();
+        session.unlock(&with_password(PASSWORD)).unwrap();
+
+        // Forgotten-password flow: the recovery code authorizes the change.
+        session
+            .change_master_password(&Credential::RecoveryCode(s(&code)), &s("new password"))
+            .unwrap();
+        session.lock();
+        session.unlock(&with_password("new password")).unwrap();
     }
 
     #[test]

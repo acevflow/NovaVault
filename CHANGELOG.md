@@ -57,10 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Command surface, error codes, auto-lock design and the shell's dependencies documented in `docs/architecture.md`; IPC and auto-lock residual risks in `docs/threat-model.md`.
 - `vault_status` command reporting whether a vault exists and whether it is unlocked, so the UI can choose the create or unlock screen at startup.
 - Configurable auto-lock timeout: `get_settings` and `set_auto_lock_timeout` commands (1 to 60 minutes, default 5; changing it requires an unlocked vault), stored in a non-secret `settings.json` next to the vault that falls back to the default if missing or invalid.
+- `Vault::verify_password` and `Vault::verify_recovery_code` in `novavault-core`: check a secret against the in-memory key slots without changing anything.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed
 
+- `change_master_password` and `regenerate_recovery_code` now require a `currentCredential` (the current master password, or the recovery code for the forgotten-password flow) and return `invalid_credentials` if it is wrong.
 - Vault format specification: AEAD fixed to XChaCha20-Poly1305; Argon2id bounds and salt, nonce and wrapped-key sizes filled in.
 - Vault format specification: key slot byte layout, wrapping associated data (`header ‖ slot_metadata`), slot operations and the recovery code alphabet, length, checksum, display form and parsing rules are now specified, with a recovery code test vector.
 - Vault format specification finalized for format version 0: file layout, header, record types and encoding, payload encoding and padding, integrity seal, reader validation order and test vectors. Attachments are no longer part of version 0 and will be specified with a later format version.

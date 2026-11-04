@@ -91,22 +91,31 @@ pub async fn lock(app: AppHandle) -> CommandResult<()> {
     .await
 }
 
-/// Changes the master password of the unlocked vault.
+/// Changes the master password of the unlocked vault, after checking the
+/// current password or recovery code.
 #[tauri::command]
 pub async fn change_master_password(
     app: AppHandle,
+    current_credential: Credential,
     new_password: SecretString,
 ) -> CommandResult<()> {
     run(app, move |session| {
-        session.change_master_password(&new_password)
+        session.change_master_password(&current_credential, &new_password)
     })
     .await
 }
 
-/// Replaces the recovery code and returns the new one, to show once.
+/// Replaces the recovery code, after checking the current password or
+/// recovery code, and returns the new one, to show once.
 #[tauri::command]
-pub async fn regenerate_recovery_code(app: AppHandle) -> CommandResult<RecoveryCodeDto> {
-    run(app, Session::regenerate_recovery_code).await
+pub async fn regenerate_recovery_code(
+    app: AppHandle,
+    current_credential: Credential,
+) -> CommandResult<RecoveryCodeDto> {
+    run(app, move |session| {
+        session.regenerate_recovery_code(&current_credential)
+    })
+    .await
 }
 
 /// Returns the app settings. Works while locked: they are not secret.
