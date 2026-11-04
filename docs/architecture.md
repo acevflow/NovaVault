@@ -3,7 +3,7 @@
 This document describes how NovaVault is put together: its components, the layers they form, how data moves between them, and why every cryptographic operation lives in Rust.
 
 > [!NOTE]
-> NovaVault is pre-alpha. The core library (cryptographic primitives, key slots, recovery codes and the vault file format with passwords, notes and secrets) and the Tauri command layer with auto-lock are in place (see [Core library](#core-library) and [Tauri command surface](#tauri-command-surface)). The UI flows, revealing and copying secrets, and attachments are not implemented yet; those parts of this document describe the intended design and will be kept in sync with the code as they land.
+> NovaVault is pre-alpha. The core library (cryptographic primitives, key slots, recovery codes and the vault file format with passwords, notes and secrets) the Tauri command layer with auto-lock, and the UI for creating, unlocking and locking the vault and for its security settings are in place (see [Core library](#core-library), [Tauri command surface](#tauri-command-surface) and [UI](#ui)). Item screens, revealing and copying secrets, and attachments are not implemented yet; those parts of this document describe the intended design and will be kept in sync with the code as they land.
 
 ## Goals
 
@@ -178,6 +178,26 @@ A failed command rejects with `{ code, message }`. The message is a fixed string
 | `corrupted` | The file failed a structural or integrity check. |
 | `storage` | The vault file could not be read or written. |
 | `internal` | Unexpected failure, for example of the system random number generator. |
+
+## UI
+
+The UI (`ui/src`) is a React + TypeScript app built with Vite. It holds no keys and calls only the commands listed above.
+
+| Path | Contents |
+| ---- | -------- |
+| `api/` | Typed wrappers over every command (`commands.ts`), DTO types (`types.ts`) and `CommandError` with the error codes and user-facing messages (`errors.ts`). This is the only code that calls `invoke`. |
+| `app/` | The router (a reducer over a `Route` union, not a router library: there are few screens and no URLs) and the app shell (skip link, navigation, lock button). |
+| `screens/` | Create vault, unlock, vault home and settings. |
+| `recovery/` | `RecoveryCodeFlow`: shows a new recovery code once, prints it, and requires retyping it. Used at creation and on regeneration. |
+| `password/` | Lazy-loaded zxcvbn strength estimate, strength meter and new-password fields. A master password must rate at least 3 of 4 (“Strong”). |
+| `components/` | Accessible base components: button, text and password fields, alert, focus-managed headings. |
+| `theme/` | Light and dark themes from CSS tokens, following the system unless the user picks one. The choice (not secret) is kept in `localStorage`. |
+
+Routing starts from `vault_status`: no vault leads to the create flow, a locked vault to the unlock screen. A `locked` error from any command, the Lock button and every auto-lock (which reloads the webview) all end on the unlock screen.
+
+Secrets in the UI: the master password, the recovery code while it is shown or retyped, and re-authentication secrets live only in component state. They are cleared after use and after failed attempts, never logged and never written to storage. JavaScript cannot wipe strings, so this limits how long they stay reachable rather than guaranteeing erasure (see the threat model). There is no copy button for the recovery code: the clipboard is shared with other apps, and clipboard auto-clear is not implemented yet.
+
+Printing uses `window.print()` with a print stylesheet that hides everything except the recovery sheet.
 
 ## Shell hardening
 

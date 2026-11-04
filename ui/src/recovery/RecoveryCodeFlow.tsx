@@ -72,7 +72,8 @@ function ShowStep({ code, intro, headingLevel, onContinue }: ShowStepProps) {
       </p>
       <p>
         {intro} It is shown only this once. Write it down or print it, and keep it somewhere safe
-        and offline. Anyone with this code can open your vault.
+        and offline. Anyone with this code can open your vault, so print it only on a printer you
+        trust.
       </p>
       <ol className="recovery-code" aria-label="Recovery code">
         {recoveryCodeGroups(code).map((group, index) => (
