@@ -14,6 +14,8 @@
 //! stderr with a fixed message. Unlike Windows and macOS, this uses only
 //! safe Rust.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use futures_util::StreamExt;
 use zbus::Connection;
 
@@ -46,35 +48,51 @@ trait LoginSession {
     fn lock(&self) -> zbus::Result<()>;
 }
 
-#[zbus::proxy(
-    interface = "org.freedesktop.ScreenSaver",
-    default_service = "org.freedesktop.ScreenSaver",
-    default_path = "/org/freedesktop/ScreenSaver",
-    gen_blocking = false
-)]
-trait FreedesktopScreenSaver {
-    /// Emitted with `true` when the screen saver or lock screen activates.
-    #[zbus(signal)]
-    fn active_changed(&self, active: bool) -> zbus::Result<()>;
+/// `org.freedesktop.ScreenSaver` (KDE and others). Each screen saver proxy
+/// lives in its own module because both interfaces name their signal
+/// `ActiveChanged`, and the generated signal types would collide.
+mod freedesktop {
+    #[zbus::proxy(
+        interface = "org.freedesktop.ScreenSaver",
+        default_service = "org.freedesktop.ScreenSaver",
+        default_path = "/org/freedesktop/ScreenSaver",
+        gen_blocking = false
+    )]
+    pub trait ScreenSaver {
+        /// Emitted with `true` when the screen saver or lock screen
+        /// activates.
+        #[zbus(signal)]
+        fn active_changed(&self, active: bool) -> zbus::Result<()>;
+    }
 }
 
-#[zbus::proxy(
-    interface = "org.gnome.ScreenSaver",
-    default_service = "org.gnome.ScreenSaver",
-    default_path = "/org/gnome/ScreenSaver",
-    gen_blocking = false
-)]
-trait GnomeScreenSaver {
-    /// Emitted with `true` when the GNOME lock screen activates.
-    #[zbus(signal)]
-    fn active_changed(&self, active: bool) -> zbus::Result<()>;
+/// `org.gnome.ScreenSaver` (GNOME).
+mod gnome {
+    #[zbus::proxy(
+        interface = "org.gnome.ScreenSaver",
+        default_service = "org.gnome.ScreenSaver",
+        default_path = "/org/gnome/ScreenSaver",
+        gen_blocking = false
+    )]
+    pub trait ScreenSaver {
+        /// Emitted with `true` when the GNOME lock screen activates.
+        #[zbus(signal)]
+        fn active_changed(&self, active: bool) -> zbus::Result<()>;
+    }
 }
+
+/// Set once the D-Bus watchers are spawned, so signals are never
+/// delivered twice.
+static STARTED: AtomicBool = AtomicBool::new(false);
 
 /// Listens for sleep and screen-lock events on Linux.
 pub struct LinuxMonitor;
 
 impl LockMonitor for LinuxMonitor {
     fn start(&self, sink: LockSink) -> Result<(), MonitorError> {
+        if STARTED.swap(true, Ordering::SeqCst) {
+            return Err(MonitorError::AlreadyStarted);
+        }
         // Connecting is asynchronous; each source runs as its own task on
         // Tauri's runtime and reports its own failure.
         let system = sink.clone();
@@ -124,8 +142,8 @@ async fn watch_logind(sink: &LockSink) -> zbus::Result<()> {
 /// exist on the session bus.
 async fn watch_screen_savers(sink: &LockSink) -> zbus::Result<()> {
     let connection = Connection::session().await?;
-    let freedesktop = FreedesktopScreenSaverProxy::new(&connection).await?;
-    let gnome = GnomeScreenSaverProxy::new(&connection).await?;
+    let freedesktop = freedesktop::ScreenSaverProxy::new(&connection).await?;
+    let gnome = gnome::ScreenSaverProxy::new(&connection).await?;
     // Subscribing works even if a service is not running: the match rule
     // is registered with the bus, and signals arrive once it starts.
     let freedesktop = freedesktop

@@ -60,6 +60,12 @@ pub enum MonitorError {
 
     /// The platform API failed; the text names the step, never data.
     #[error("OS lock events are unavailable: {0}")]
+    // The macOS and Linux monitors cannot fail synchronously (Linux reports
+    // D-Bus failures from its tasks), so only some targets construct this.
+    #[cfg_attr(
+        any(target_os = "macos", target_os = "linux"),
+        expect(dead_code, reason = "constructed only on Windows and other targets")
+    )]
     Unavailable(&'static str),
 }
 
