@@ -13,6 +13,8 @@
     "allow-get-settings",
     "allow-set-auto-lock-timeout",
     "allow-list-items",
+    "allow-get-item",
+    "allow-reveal-item-field",
     "allow-create-item",
     "allow-update-item",
     "allow-delete-item"

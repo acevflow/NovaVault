@@ -66,6 +66,8 @@ fn main() -> ExitCode {
             commands::get_settings,
             commands::set_auto_lock_timeout,
             commands::list_items,
+            commands::get_item,
+            commands::reveal_item_field,
             commands::create_item,
             commands::update_item,
             commands::delete_item,
@@ -120,7 +122,7 @@ mod tests {
             .collect();
         granted.sort();
 
-        assert_eq!(declared.len(), 12);
+        assert_eq!(declared.len(), 14);
         assert_eq!(granted, declared);
     }
 }

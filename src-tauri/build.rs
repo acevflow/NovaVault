@@ -17,6 +17,8 @@ const COMMANDS: &[&str] = &[
     "get_settings",
     "set_auto_lock_timeout",
     "list_items",
+    "get_item",
+    "reveal_item_field",
     "create_item",
     "update_item",
     "delete_item",

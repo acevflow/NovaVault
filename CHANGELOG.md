@@ -66,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings screen: change the master password (with strength feedback) and regenerate the recovery code (shown once, printable, retyped to confirm), both after re-entering the current password or recovery code; choose the auto-lock timeout (1, 5, 15, 30 or 60 minutes); choose the theme (match system, light or dark).
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
+- `get_item` command: an item's plain fields (title, user name, URL, timestamps) and, for each secret field, only whether it is set. Secret values never come with it.
+- `reveal_item_field` command: returns one secret field (password, notes, note body or secret value) when the user asks to see it.
+
 ### Changed
 
 - Architecture document describes the UI structure, routing and how the UI handles secrets; the threat model records typed secrets in the webview and printed recovery codes as residual risks; the development guide lists the UI folders; README status ticks the vault lifecycle and recovery code UI.
@@ -74,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vault format specification: key slot byte layout, wrapping associated data (`header ‖ slot_metadata`), slot operations and the recovery code alphabet, length, checksum, display form and parsing rules are now specified, with a recovery code test vector.
 - Vault format specification finalized for format version 0: file layout, header, record types and encoding, payload encoding and padding, integrity seal, reader validation order and test vectors. Attachments are no longer part of version 0 and will be specified with a later format version.
 - Architecture document describes the core library modules and the vault file; the threat model records the payload padding and the integrity seal.
+- `update_item` now keeps a secret field's stored value when it is sent as `null` or left out, so editing an item never requires loading its secrets into the UI; changing an item's type is rejected with `invalid_input`.
 - CI builds the UI before the Rust checks (the Tauri shell embeds the built UI) and checks UI formatting; Dependabot also tracks the root npm package (Tauri CLI).
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main

@@ -16,7 +16,10 @@ use std::time::Instant;
 use secrecy::SecretString;
 use tauri::{AppHandle, Manager};
 
-use crate::dto::{Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, VaultStatusDto};
+use crate::dto::{
+    Credential, ItemDetailsDto, ItemField, ItemInput, ItemSummaryDto, ItemUpdate, RecoveryCodeDto,
+    RevealedValueDto, VaultStatusDto,
+};
 use crate::error::{CommandError, CommandResult};
 use crate::session::Session;
 use crate::settings::Settings;
@@ -142,9 +145,25 @@ pub async fn create_item(app: AppHandle, item: ItemInput) -> CommandResult<Strin
     run(app, move |session| session.create_item(item)).await
 }
 
-/// Replaces the content of item `id`.
+/// Returns item `id` without its secret values.
 #[tauri::command]
-pub async fn update_item(app: AppHandle, id: String, item: ItemInput) -> CommandResult<()> {
+pub async fn get_item(app: AppHandle, id: String) -> CommandResult<ItemDetailsDto> {
+    run(app, move |session| session.get_item(&id)).await
+}
+
+/// Returns one secret field of item `id`, because the user asked to see it.
+#[tauri::command]
+pub async fn reveal_item_field(
+    app: AppHandle,
+    id: String,
+    field: ItemField,
+) -> CommandResult<RevealedValueDto> {
+    run(app, move |session| session.reveal_field(&id, field)).await
+}
+
+/// Updates item `id`; secret fields sent as `null` keep their values.
+#[tauri::command]
+pub async fn update_item(app: AppHandle, id: String, item: ItemUpdate) -> CommandResult<()> {
     run(app, move |session| session.update_item(&id, item)).await
 }
 
