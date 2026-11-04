@@ -52,7 +52,7 @@ The trust boundary is the Tauri IPC bridge. Everything above it is assumed to be
 
 | Module | Responsibility |
 | ------ | -------------- |
-| `vault` | `Vault`, the unlocked vault: `create`, `open_with_password`, `open_with_recovery_code`, `list`, `get`, `insert`, `update`, `remove`, `save`. |
+| `vault` | `Vault`, the unlocked vault: `create`, `open_with_password`, `open_with_recovery_code`, `list`, `get`, `insert`, `update`, `remove`, `save`, `change_password`, `regenerate_recovery_code` (each rewrites one key slot and saves, restoring the previous slot if the save fails). |
 | `item` | The item model (`PasswordItem`, `NoteItem`, `SecretItem`, `ItemId`) and the padded payload encoding. |
 | `format` (private) | Byte framing of the file, record associated data and the whole-file integrity seal. Pure functions, no I/O. |
 | `atomic` (private) | Atomic file replacement (temporary file, flush, rename). |

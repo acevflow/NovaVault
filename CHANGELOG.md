@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A whole-file integrity seal that detects removed, duplicated, reordered or replayed records.
   - Typed `VaultError` for I/O, foreign files, unsupported versions and algorithms, corruption and wrong credentials, with no secret data in any variant.
   - Round-trip, version-mismatch, truncation, per-field corruption and record-replay tests, and known-encoding vectors for the header and payload.
+- `Vault::change_password` and `Vault::regenerate_recovery_code` in `novavault-core`: rewrite only the matching key slot and save the vault; if the save fails the previous slot is kept, so memory always matches the file.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed
