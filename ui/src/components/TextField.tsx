@@ -14,7 +14,7 @@ export interface TextFieldProps extends Omit<
   /** Content placed after the input on the same row (for example a toggle button). */
   readonly trailing?: ReactNode;
   /** Ref to the input element, for focus management. */
-  readonly ref?: Ref<HTMLInputElement>;
+  readonly ref?: Ref<HTMLInputElement> | undefined;
 }
 
 /** A labelled text input with optional help and error text. */

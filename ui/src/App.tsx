@@ -6,6 +6,7 @@ import { AppShell } from './app/AppShell';
 import { initialRoute, isUnlockedRoute, routerReducer, type Route } from './app/router';
 import { CreateVaultScreen } from './screens/create/CreateVaultScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { LoadingScreen, StartupErrorScreen } from './screens/StatusScreens';
 import { UnlockScreen } from './screens/unlock/UnlockScreen';
 import { ThemeProvider } from './theme/ThemeProvider';
@@ -68,6 +69,9 @@ export function App() {
           onUnlocked={() => {
             dispatch({ type: 'unlocked' });
           }}
+          onLocked={() => {
+            dispatch({ type: 'locked' });
+          }}
         />
       </AppShell>
     </ThemeProvider>
@@ -78,9 +82,10 @@ interface ScreenProps {
   readonly route: Route;
   readonly onRetry: () => void;
   readonly onUnlocked: () => void;
+  readonly onLocked: () => void;
 }
 
-function Screen({ route, onRetry, onUnlocked }: ScreenProps) {
+function Screen({ route, onRetry, onUnlocked, onLocked }: ScreenProps) {
   switch (route.name) {
     case 'loading':
       return <LoadingScreen />;
@@ -93,7 +98,6 @@ function Screen({ route, onRetry, onUnlocked }: ScreenProps) {
     case 'unlock':
       return <UnlockScreen onUnlocked={onUnlocked} />;
     case 'settings':
-      // Screen added in the following commit.
-      return <p>Coming soon.</p>;
+      return <SettingsScreen onLocked={onLocked} />;
   }
 }
