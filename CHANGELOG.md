@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Unit tests for the session, errors, DTOs, the capability allow-list and the Windows message mapping.
 - Command surface, error codes, auto-lock design and the shell's dependencies documented in `docs/architecture.md`; IPC and auto-lock residual risks in `docs/threat-model.md`.
 - `vault_status` command reporting whether a vault exists and whether it is unlocked, so the UI can choose the create or unlock screen at startup.
+- Configurable auto-lock timeout: `get_settings` and `set_auto_lock_timeout` commands (1 to 60 minutes, default 5; changing it requires an unlocked vault), stored in a non-secret `settings.json` next to the vault that falls back to the default if missing or invalid.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed

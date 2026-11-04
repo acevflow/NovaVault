@@ -11,6 +11,7 @@
 //! - `os_lock`: per-OS suspend and screen-lock monitors.
 //! - `commands`: the Tauri command handlers (the whole IPC surface).
 //! - `session`: the unlocked vault and the logic behind every command.
+//! - `settings`: the non-secret settings file (auto-lock timeout).
 //! - `dto`: command inputs and outputs.
 //! - `error`: the typed, secret-free errors returned to the UI.
 
@@ -23,6 +24,7 @@ mod dto;
 mod error;
 mod os_lock;
 mod session;
+mod settings;
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -61,6 +63,8 @@ fn main() -> ExitCode {
             commands::lock,
             commands::change_master_password,
             commands::regenerate_recovery_code,
+            commands::get_settings,
+            commands::set_auto_lock_timeout,
             commands::list_items,
             commands::create_item,
             commands::update_item,
@@ -116,7 +120,7 @@ mod tests {
             .collect();
         granted.sort();
 
-        assert_eq!(declared.len(), 10);
+        assert_eq!(declared.len(), 12);
         assert_eq!(granted, declared);
     }
 }

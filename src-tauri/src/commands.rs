@@ -19,6 +19,7 @@ use tauri::{AppHandle, Manager};
 use crate::dto::{Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, VaultStatusDto};
 use crate::error::{CommandError, CommandResult};
 use crate::session::Session;
+use crate::settings::Settings;
 
 /// Shared app state: the single vault session.
 pub struct AppState {
@@ -106,6 +107,18 @@ pub async fn change_master_password(
 #[tauri::command]
 pub async fn regenerate_recovery_code(app: AppHandle) -> CommandResult<RecoveryCodeDto> {
     run(app, Session::regenerate_recovery_code).await
+}
+
+/// Returns the app settings. Works while locked: they are not secret.
+#[tauri::command]
+pub async fn get_settings(app: AppHandle) -> CommandResult<Settings> {
+    run(app, |session| Ok(session.settings())).await
+}
+
+/// Sets the inactivity auto-lock timeout, in minutes (1 to 60).
+#[tauri::command]
+pub async fn set_auto_lock_timeout(app: AppHandle, minutes: u32) -> CommandResult<()> {
+    run(app, move |session| session.set_auto_lock_minutes(minutes)).await
 }
 
 /// Lists the items of the unlocked vault, without secret fields.

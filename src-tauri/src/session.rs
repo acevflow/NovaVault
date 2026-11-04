@@ -12,7 +12,7 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use novavault_core::{ItemContent, KdfParams, RecoveryCode, Vault};
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
@@ -21,6 +21,10 @@ use crate::dto::{
     Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, VaultStatusDto, parse_item_id,
 };
 use crate::error::{CommandError, CommandResult};
+use crate::settings::Settings;
+
+/// File name of the settings, stored next to the vault file.
+const SETTINGS_FILE_NAME: &str = "settings.json";
 
 /// State of the single vault this app manages.
 pub struct Session {
@@ -32,18 +36,53 @@ pub struct Session {
     vault: Option<Vault>,
     /// When the last command ran, for the inactivity auto-lock.
     last_activity: Instant,
+    /// Where the settings file lives: next to the vault file.
+    settings_path: PathBuf,
+    /// The current settings, loaded at startup.
+    settings: Settings,
 }
 
 impl Session {
     /// A locked session for the vault at `path`, creating key slots with
-    /// `params`.
+    /// `params`. Settings are read from `settings.json` in the same
+    /// directory, with defaults if that file is missing or invalid.
     pub fn new(path: PathBuf, params: KdfParams, now: Instant) -> Self {
+        let settings_path = path.with_file_name(SETTINGS_FILE_NAME);
+        let settings = Settings::load(&settings_path);
         Self {
             path,
             params,
             vault: None,
             last_activity: now,
+            settings_path,
+            settings,
         }
+    }
+
+    /// The current settings.
+    pub const fn settings(&self) -> Settings {
+        self.settings
+    }
+
+    /// Sets the inactivity timeout and saves the settings.
+    ///
+    /// Requires an unlocked vault, so that someone at a locked app cannot
+    /// lengthen the timeout before the owner unlocks it.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] if
+    /// `minutes` is out of bounds, or [`CommandError::Storage`] if the
+    /// file cannot be written (the previous value is then kept).
+    pub fn set_auto_lock_minutes(&mut self, minutes: u32) -> CommandResult<()> {
+        self.vault()?;
+        let mut updated = self.settings;
+        updated.set_auto_lock_minutes(minutes)?;
+        updated
+            .save(&self.settings_path)
+            .map_err(|_| CommandError::Storage)?;
+        self.settings = updated;
+        Ok(())
     }
 
     /// Records user activity at `now`, restarting the inactivity timer.
@@ -125,11 +164,12 @@ impl Session {
         self.vault.take().is_some()
     }
 
-    /// Locks the vault if it has been unlocked and idle for at least
-    /// `timeout` at `now`. Returns whether it locked.
-    pub fn lock_if_idle(&mut self, now: Instant, timeout: Duration) -> bool {
+    /// Locks the vault if it has been unlocked and idle for at least the
+    /// configured auto-lock timeout at `now`. Returns whether it locked.
+    pub fn lock_if_idle(&mut self, now: Instant) -> bool {
         self.is_unlocked()
-            && now.saturating_duration_since(self.last_activity) >= timeout
+            && now.saturating_duration_since(self.last_activity)
+                >= self.settings.auto_lock_timeout()
             && self.lock()
     }
 
@@ -244,6 +284,7 @@ fn password_bytes(password: &SecretString) -> CommandResult<SecretSlice<u8>> {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::time::Duration;
 
     use super::*;
 
@@ -553,20 +594,49 @@ mod tests {
         let start = Instant::now();
         let timeout = Duration::from_secs(300);
         let mut session = Session::new(dir.path().join("vault.nvault"), fast_params(), start);
+        assert_eq!(session.settings().auto_lock_timeout(), timeout);
         // Nothing to lock yet.
-        assert!(!session.lock_if_idle(start + timeout, timeout));
+        assert!(!session.lock_if_idle(start + timeout));
 
         session.create(&s(PASSWORD)).unwrap();
         session.touch(start);
-        assert!(!session.lock_if_idle(start + timeout - Duration::from_secs(1), timeout));
+        assert!(!session.lock_if_idle(start + timeout - Duration::from_secs(1)));
         // Activity restarts the timer.
         session.touch(start + Duration::from_secs(200));
-        assert!(!session.lock_if_idle(start + timeout, timeout));
+        assert!(!session.lock_if_idle(start + timeout));
         assert!(session.is_unlocked());
-        assert!(session.lock_if_idle(start + Duration::from_secs(500), timeout));
+        assert!(session.lock_if_idle(start + Duration::from_secs(500)));
         assert!(!session.is_unlocked());
         // A clock reading before the last activity never panics or locks.
-        assert!(!session.lock_if_idle(start, timeout));
+        assert!(!session.lock_if_idle(start));
+    }
+
+    #[test]
+    fn auto_lock_timeout_is_configurable_and_persisted() {
+        let dir = TempDir::new();
+        let start = Instant::now();
+        let path = dir.path().join("vault.nvault");
+        let mut session = Session::new(path.clone(), fast_params(), start);
+        assert_eq!(
+            session.set_auto_lock_minutes(1),
+            Err(CommandError::Locked),
+            "changing the timeout needs an unlocked vault"
+        );
+        session.create(&s(PASSWORD)).unwrap();
+        assert_eq!(
+            session.set_auto_lock_minutes(0),
+            Err(CommandError::InvalidInput)
+        );
+        session.set_auto_lock_minutes(1).unwrap();
+        session.touch(start);
+        assert!(session.lock_if_idle(start + Duration::from_secs(60)));
+
+        // A new session (next app start) reads the saved value.
+        let reloaded = Session::new(path, fast_params(), start);
+        assert_eq!(
+            reloaded.settings().auto_lock_timeout(),
+            Duration::from_secs(60)
+        );
     }
 
     #[test]

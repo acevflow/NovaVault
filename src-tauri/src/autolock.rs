@@ -18,16 +18,13 @@ use tauri::{AppHandle, Manager};
 
 use crate::commands::AppState;
 
-/// How long the vault may stay unlocked without any command.
-pub const IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
-
 /// How often the idle timer is checked; bounds how late the lock can be.
 const CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Why the vault was locked automatically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockReason {
-    /// No command for [`IDLE_TIMEOUT`].
+    /// No command for the configured auto-lock timeout.
     Inactivity,
     /// The system is about to suspend or hibernate.
     Suspend,
@@ -49,12 +46,12 @@ impl LockReason {
 /// Locks the vault for `reason` and, if it was unlocked, resets the UI.
 ///
 /// For [`LockReason::Inactivity`] the session locks only if it has really
-/// been idle for [`IDLE_TIMEOUT`]; OS events lock unconditionally.
+/// been idle for the configured timeout; OS events lock unconditionally.
 pub fn lock_and_reset_ui(app: &AppHandle, reason: LockReason) {
     let locked = app
         .state::<AppState>()
         .with_session(|session| match reason {
-            LockReason::Inactivity => session.lock_if_idle(Instant::now(), IDLE_TIMEOUT),
+            LockReason::Inactivity => session.lock_if_idle(Instant::now()),
             LockReason::Suspend | LockReason::ScreenLock => session.lock(),
         });
     if !locked {
@@ -71,7 +68,7 @@ pub fn lock_and_reset_ui(app: &AppHandle, reason: LockReason) {
     }
 }
 
-/// Starts the background thread that enforces [`IDLE_TIMEOUT`].
+/// Starts the background thread that enforces the auto-lock timeout.
 ///
 /// A failure to start is reported on stderr and is not fatal: the vault
 /// still locks on user request and on OS events.

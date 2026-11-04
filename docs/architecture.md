@@ -88,7 +88,7 @@ Three triggers lock the vault automatically. All of them wipe the vault key (by 
 
 | Trigger | Implementation |
 | ------- | -------------- |
-| Inactivity | A background thread checks every 5 seconds and locks once 5 minutes have passed since the last command. Every command counts as activity. The timeout is fixed until settings exist. |
+| Inactivity | A background thread checks every 5 seconds and locks once the auto-lock timeout has passed since the last command. Every command counts as activity. The timeout defaults to 5 minutes and can be set from 1 to 60 minutes (`set_auto_lock_timeout`); it is stored in `settings.json` next to the vault file, which is not secret and falls back to the default if missing or invalid. |
 | System suspend | Windows: `WM_POWERBROADCAST` / `PBT_APMSUSPEND`. macOS: `NSWorkspaceWillSleepNotification`. Linux: logind `PrepareForSleep(true)`. |
 | Screen lock | Windows: `WM_WTSSESSION_CHANGE` / `WTS_SESSION_LOCK`. macOS: `com.apple.screenIsLocked` and `NSWorkspaceSessionDidResignActiveNotification` (fast user switching). Linux: logind `Session.Lock`, and `ActiveChanged(true)` from `org.freedesktop.ScreenSaver` or `org.gnome.ScreenSaver`. |
 
@@ -135,7 +135,7 @@ With the vault unlocked, the core derives a new wrapping key from the new secret
 - No command ever returns the vault key, wrapping keys, KDF output, or raw ciphertext.
 - Inputs are validated in Rust; errors returned to the UI are typed and contain no secret material.
 - Every handler (`src-tauri/src/commands.rs`) moves its arguments to a blocking worker thread, because Argon2id takes a noticeable time, then locks the session and delegates to it.
-- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these ten and no core plugin permission. A test checks that the two lists match.
+- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these twelve and no core plugin permission. A test checks that the two lists match.
 
 ### Commands
 
@@ -149,6 +149,8 @@ Arguments are camelCase in JavaScript (`invoke('change_master_password', { newPa
 | `lock` | none | nothing | Wipes the vault key. |
 | `change_master_password` | `newPassword` | nothing | Re-wraps the vault key in the password slot. Works after unlocking with the recovery code (forgotten-password flow). |
 | `regenerate_recovery_code` | none | `{ recoveryCode }` | Replaces the recovery slot; the previous code stops working. |
+| `get_settings` | none | `{ autoLockMinutes }` | Works while locked; settings are not secret. |
+| `set_auto_lock_timeout` | `minutes` | nothing | Requires an unlocked vault. `invalid_input` outside 1 to 60. |
 | `list_items` | none | `[{ id, kind, title, createdAtMs, updatedAtMs }]` | No secret fields. `kind` is `"password"`, `"note"` or `"secret"`; `id` is 32 hex digits. |
 | `create_item` | `item` | `id` | |
 | `update_item` | `id`, `item` | nothing | The new content may have a different kind. |
@@ -180,7 +182,7 @@ A failed command rejects with `{ code, message }`. The message is a fixed string
 ## Shell hardening
 
 - **Content Security Policy:** strict, with no remote origins, no inline scripts and no `eval`.
-- **Capabilities:** only the ten vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
+- **Capabilities:** only the twelve vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
 - **No network:** core features do not open network connections.
 
 ## Why all cryptography lives in Rust
@@ -235,6 +237,7 @@ Shell (`src-tauri`) dependencies that handle secrets or OS security events:
 | [`secrecy`](https://crates.io/crates/secrecy) (`serde` feature) | Secret command arguments | Deserializes passwords, recovery codes and secret fields straight into `SecretString`, so Rust never holds them in a plain `String`. Serialization of secrets stays disabled. |
 | [`zeroize`](https://crates.io/crates/zeroize) (`derive`) | Wiping responses | Item titles in list responses are wiped once serialized. |
 | [`serde`](https://crates.io/crates/serde) | IPC (de)serialization | Already used by Tauri for every command; no new crate. |
+| [`serde_json`](https://crates.io/crates/serde_json) | Settings file | Reads and writes the non-secret `settings.json`. Already a Tauri dependency; no new crate. |
 | [`windows`](https://crates.io/crates/windows) (Windows only) | Suspend and screen-lock events | Microsoft's official Win32 bindings, same version Tauri already uses. Only the window, library loader and remote desktop session APIs are enabled. |
 | [`objc2-app-kit`](https://crates.io/crates/objc2-app-kit), [`objc2-foundation`](https://crates.io/crates/objc2-foundation), [`block2`](https://crates.io/crates/block2) (macOS only) | Sleep and screen-lock notifications | The Objective-C bindings Tauri itself uses, same versions; only `NSWorkspace` and the notification center APIs are enabled. |
 | [`zbus`](https://crates.io/crates/zbus), [`futures-util`](https://crates.io/crates/futures-util) (Linux only) | logind and screen saver D-Bus signals | Pure-Rust D-Bus with no C library, run on Tauri's Tokio runtime (no extra executor, default features off). `futures-util` is already a Tauri dependency. Talks only to local system and session buses, never the network. |

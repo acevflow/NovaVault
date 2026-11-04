@@ -10,6 +10,8 @@
     "allow-lock",
     "allow-change-master-password",
     "allow-regenerate-recovery-code",
+    "allow-get-settings",
+    "allow-set-auto-lock-timeout",
     "allow-list-items",
     "allow-create-item",
     "allow-update-item",

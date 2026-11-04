@@ -47,7 +47,7 @@ This document states what NovaVault protects, who it protects it from, which thr
 | Script injection abusing Tauri commands | 3 | Coarse, intent-based commands that return only what a screen needs; no generic decrypt or file-access commands. Commands are declared in `build.rs`, so Tauri rejects any command the capability does not grant, and the capability grants only the nine vault commands. The UI never supplies a file path: the vault location is fixed by the shell. |
 | Secrets lingering in memory | 4, 5 | `secrecy` wrappers and `zeroize` for keys and secret fields; no long-lived plaintext cache; session dropped on lock. |
 | Secrets left on the clipboard | 4, 5 | Copy is performed from Rust and the clipboard is cleared after a short timeout if it still holds the copied value. |
-| Unattended unlocked vault | 5 | Auto-lock five minutes after the last command, before system suspend and on screen lock (one native monitor per OS). Auto-lock wipes the vault key and reloads the webview, discarding the UI's in-memory view. |
+| Unattended unlocked vault | 5 | Auto-lock after a configurable timeout (default five minutes, at most one hour; changing it requires an unlocked vault) since the last command, before system suspend and on screen lock (one native monitor per OS). Auto-lock wipes the vault key and reloads the webview, discarding the UI's in-memory view. |
 | Shoulder surfing | 5 | Secret fields are masked by default and revealed only on explicit user action. |
 | Secrets in logs or crash output | all | Secrets are never logged; secret types do not implement printable formatting; error messages contain no key material. |
 | Lost master password | user | Emergency recovery code as a second key slot, shown once and confirmed by the user. |
