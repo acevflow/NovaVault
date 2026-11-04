@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, Ref } from 'react';
 
 /** Visual weight of a {@link Button}. */
 export type ButtonVariant = 'primary' | 'secondary' | 'danger';
@@ -12,6 +12,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    * is happening (for example "Unlocking…"); `aria-busy` announces it.
    */
   readonly busy?: boolean;
+  /** Ref to the button element, for focus management. */
+  readonly ref?: Ref<HTMLButtonElement> | undefined;
 }
 
 /** A button. Defaults to `type="button"` so it never submits a form by accident. */
