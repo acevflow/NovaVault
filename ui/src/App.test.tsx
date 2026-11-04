@@ -7,7 +7,7 @@ import { mockCommands, shellError } from './test/ipc';
 
 describe('App', () => {
   it('shows the unlocked vault with navigation when already unlocked', async () => {
-    mockCommands({ vault_status: () => ({ exists: true, unlocked: true }) });
+    mockCommands({ vault_status: () => ({ exists: true, unlocked: true }), list_items: () => [] });
     render(<App />);
     expect(await screen.findByRole('heading', { level: 1, name: 'Your vault' })).toHaveFocus();
     expect(screen.getByRole('button', { name: 'Vault' })).toHaveAttribute('aria-current', 'page');
@@ -25,6 +25,7 @@ describe('App', () => {
         if (attempts === 1) throw shellError('storage');
         return { exists: true, unlocked: true };
       },
+      list_items: () => [],
     });
     render(<App />);
     expect(await screen.findByRole('alert')).toHaveTextContent('could not be read or written');
@@ -35,6 +36,7 @@ describe('App', () => {
   it('locks the vault from the header', async () => {
     const calls = mockCommands({
       vault_status: () => ({ exists: true, unlocked: true }),
+      list_items: () => [],
       lock: () => null,
     });
     render(<App />);

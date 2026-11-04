@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `get_item` command: an item's plain fields (title, user name, URL, timestamps) and, for each secret field, only whether it is set. Secret values never come with it.
 - `reveal_item_field` command: returns one secret field (password, notes, note body or secret value) when the user asks to see it.
+- Item list on the vault screen: every password, note and secret sorted by title with its type, a search by title (ignoring case and accents), a type filter, a live result count, empty and no-match states, and a retry if loading fails. Typed UI wrappers for the item commands.
 
 ### Changed
 

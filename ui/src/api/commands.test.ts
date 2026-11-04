@@ -3,11 +3,17 @@ import { describe, expect, it } from 'vitest';
 import { mockCommands, shellError, TEST_RECOVERY_CODE } from '../test/ipc';
 import {
   changeMasterPassword,
+  createItem,
   createVault,
+  deleteItem,
+  getItem,
   getSettings,
+  listItems,
   regenerateRecoveryCode,
+  revealItemField,
   setAutoLockTimeout,
   unlock,
+  updateItem,
   vaultStatus,
 } from './commands';
 import { CommandError, errorMessage, isCommandError, toCommandError } from './errors';
@@ -41,6 +47,42 @@ describe('commands', () => {
       ['regenerate_recovery_code', { currentCredential: current }],
       ['get_settings', {}],
       ['set_auto_lock_timeout', { minutes: 15 }],
+    ]);
+  });
+
+  it('wraps the item commands', async () => {
+    const id = 'a'.repeat(32);
+    const details = {
+      id,
+      kind: 'note',
+      title: 'Diary',
+      hasBody: true,
+      createdAtMs: 1,
+      updatedAtMs: 2,
+    } as const;
+    const calls = mockCommands({
+      list_items: () => [],
+      get_item: () => details,
+      reveal_item_field: () => ({ value: 'dear diary' }),
+      create_item: () => id,
+      update_item: () => null,
+      delete_item: () => null,
+    });
+
+    await expect(listItems()).resolves.toEqual([]);
+    await expect(getItem(id)).resolves.toEqual(details);
+    await expect(revealItemField(id, 'body')).resolves.toBe('dear diary');
+    await expect(createItem({ kind: 'note', title: 'Diary', body: 'x' })).resolves.toBe(id);
+    await updateItem(id, { kind: 'note', title: 'Journal', body: null });
+    await deleteItem(id);
+
+    expect(calls.map(({ command, args }) => [command, args])).toEqual([
+      ['list_items', {}],
+      ['get_item', { id }],
+      ['reveal_item_field', { id, field: 'body' }],
+      ['create_item', { item: { kind: 'note', title: 'Diary', body: 'x' } }],
+      ['update_item', { id, item: { kind: 'note', title: 'Journal', body: null } }],
+      ['delete_item', { id }],
     ]);
   });
 
