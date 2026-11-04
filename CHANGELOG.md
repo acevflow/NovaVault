@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Auto-lock after five minutes without a command, before system suspend and on screen lock, with one `LockMonitor` per OS (Win32 power and session notifications, AppKit notifications, logind and screen saver D-Bus signals). Auto-lock reloads the webview to discard the UI's in-memory view.
   - Unit tests for the session, errors, DTOs, the capability allow-list and the Windows message mapping.
 - Command surface, error codes, auto-lock design and the shell's dependencies documented in `docs/architecture.md`; IPC and auto-lock residual risks in `docs/threat-model.md`.
+- `vault_status` command reporting whether a vault exists and whether it is unlocked, so the UI can choose the create or unlock screen at startup.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed

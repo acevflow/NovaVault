@@ -135,7 +135,7 @@ With the vault unlocked, the core derives a new wrapping key from the new secret
 - No command ever returns the vault key, wrapping keys, KDF output, or raw ciphertext.
 - Inputs are validated in Rust; errors returned to the UI are typed and contain no secret material.
 - Every handler (`src-tauri/src/commands.rs`) moves its arguments to a blocking worker thread, because Argon2id takes a noticeable time, then locks the session and delegates to it.
-- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these nine and no core plugin permission. A test checks that the two lists match.
+- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these ten and no core plugin permission. A test checks that the two lists match.
 
 ### Commands
 
@@ -143,6 +143,7 @@ Arguments are camelCase in JavaScript (`invoke('change_master_password', { newPa
 
 | Command | Arguments | Returns | Notes |
 | ------- | --------- | ------- | ----- |
+| `vault_status` | none | `{ exists, unlocked }` | Lets the UI choose the create or unlock screen at startup. |
 | `create_vault` | `password` | `{ recoveryCode }` | Creates the vault and leaves it unlocked. The code (`XXXX-XXXX-…`) is returned only here; the UI must show it once and have the user confirm it was saved. |
 | `unlock` | `credential`: `{ method: "password" \| "recoveryCode", secret }` | nothing | Locks any open vault first, so a failed attempt leaves the app locked. Recovery codes are accepted in any case, with or without dashes. |
 | `lock` | none | nothing | Wipes the vault key. |
@@ -179,7 +180,7 @@ A failed command rejects with `{ code, message }`. The message is a fixed string
 ## Shell hardening
 
 - **Content Security Policy:** strict, with no remote origins, no inline scripts and no `eval`.
-- **Capabilities:** only the nine vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
+- **Capabilities:** only the ten vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
 - **No network:** core features do not open network connections.
 
 ## Why all cryptography lives in Rust

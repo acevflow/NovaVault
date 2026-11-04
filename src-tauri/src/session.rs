@@ -17,7 +17,9 @@ use std::time::{Duration, Instant};
 use novavault_core::{ItemContent, KdfParams, RecoveryCode, Vault};
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
 
-use crate::dto::{Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, parse_item_id};
+use crate::dto::{
+    Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, VaultStatusDto, parse_item_id,
+};
 use crate::error::{CommandError, CommandResult};
 
 /// State of the single vault this app manages.
@@ -52,6 +54,19 @@ impl Session {
     /// Whether a vault is currently unlocked.
     pub const fn is_unlocked(&self) -> bool {
         self.vault.is_some()
+    }
+
+    /// Whether a vault file exists and whether it is unlocked, so the UI
+    /// can choose between the create and unlock screens.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Storage`] if the vault location cannot be checked.
+    pub fn status(&self) -> CommandResult<VaultStatusDto> {
+        Ok(VaultStatusDto {
+            exists: self.path.try_exists().map_err(|_| CommandError::Storage)?,
+            unlocked: self.is_unlocked(),
+        })
     }
 
     /// Creates a new vault protected by `password` and leaves it unlocked.
@@ -350,6 +365,21 @@ mod tests {
             Err(CommandError::InvalidCredentials)
         );
         assert!(!session.is_unlocked());
+    }
+
+    #[test]
+    fn status_reports_existence_and_lock_state() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        let status = |session: &Session| {
+            let status = session.status().unwrap();
+            (status.exists, status.unlocked)
+        };
+        assert_eq!(status(&session), (false, false));
+        session.create(&s(PASSWORD)).unwrap();
+        assert_eq!(status(&session), (true, true));
+        session.lock();
+        assert_eq!(status(&session), (true, false));
     }
 
     #[test]

@@ -55,6 +55,7 @@ fn main() -> ExitCode {
         // Keep in sync with `COMMANDS` in build.rs, which generates the
         // permissions granted in capabilities/default.json.
         .invoke_handler(tauri::generate_handler![
+            commands::vault_status,
             commands::create_vault,
             commands::unlock,
             commands::lock,
@@ -115,7 +116,7 @@ mod tests {
             .collect();
         granted.sort();
 
-        assert_eq!(declared.len(), 9);
+        assert_eq!(declared.len(), 10);
         assert_eq!(granted, declared);
     }
 }

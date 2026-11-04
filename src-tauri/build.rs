@@ -8,6 +8,7 @@
 /// Every command the shell registers. Keep in sync with
 /// `generate_handler!` in `src/main.rs`; a test checks the capability.
 const COMMANDS: &[&str] = &[
+    "vault_status",
     "create_vault",
     "unlock",
     "lock",

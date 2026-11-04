@@ -16,7 +16,7 @@ use std::time::Instant;
 use secrecy::SecretString;
 use tauri::{AppHandle, Manager};
 
-use crate::dto::{Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto};
+use crate::dto::{Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, VaultStatusDto};
 use crate::error::{CommandError, CommandResult};
 use crate::session::Session;
 
@@ -56,6 +56,12 @@ async fn run<T: Send + 'static>(
     })
     .await
     .map_err(|_| CommandError::Internal)?
+}
+
+/// Reports whether a vault exists and whether it is unlocked.
+#[tauri::command]
+pub async fn vault_status(app: AppHandle) -> CommandResult<VaultStatusDto> {
+    run(app, |session| session.status()).await
 }
 
 /// Creates a new vault protected by `password` and leaves it unlocked.

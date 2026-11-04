@@ -4,6 +4,7 @@
   "description": "Permissions for the main window: only the NovaVault vault commands. No core plugin permissions (no events, file system, shell or HTTP). Grant anything else only when a feature needs it, and justify it in the PR.",
   "windows": ["main"],
   "permissions": [
+    "allow-vault-status",
     "allow-create-vault",
     "allow-unlock",
     "allow-lock",
