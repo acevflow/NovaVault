@@ -55,10 +55,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Auto-lock after five minutes without a command, before system suspend and on screen lock, with one `LockMonitor` per OS (Win32 power and session notifications, AppKit notifications, logind and screen saver D-Bus signals). Auto-lock reloads the webview to discard the UI's in-memory view.
   - Unit tests for the session, errors, DTOs, the capability allow-list and the Windows message mapping.
 - Command surface, error codes, auto-lock design and the shell's dependencies documented in `docs/architecture.md`; IPC and auto-lock residual risks in `docs/threat-model.md`.
+- `vault_status` command reporting whether a vault exists and whether it is unlocked, so the UI can choose the create or unlock screen at startup.
+- Configurable auto-lock timeout: `get_settings` and `set_auto_lock_timeout` commands (1 to 60 minutes, default 5; changing it requires an unlocked vault), stored in a non-secret `settings.json` next to the vault that falls back to the default if missing or invalid.
+- `Vault::verify_password` and `Vault::verify_recovery_code` in `novavault-core`: check a secret against the in-memory key slots without changing anything.
+- UI app shell: header with skip link, main navigation and lock button, typed screen routing (a reducer, no router library) that picks the create, unlock or vault screen from `vault_status` at startup, and a startup error screen with retry.
+- Typed UI API layer (`ui/src/api`) over the Tauri commands, with a `CommandError` type mirroring the shell's error codes and user-facing messages.
+- Light and dark themes from CSS tokens, following the system by default; accessible base components (button, text and password fields, alerts, focus-managed screen headings) and a responsive layout.
+- Create-vault flow: master password with live zxcvbn strength feedback (at least “Strong” required) and confirmation, then a one-time recovery code screen with a print-only sheet, an “I have saved it” confirmation and a retype step that must match the code before the vault opens.
+- Unlock screen with keyboard-accessible tabs for the master password and the recovery code (forgotten-password flow); the secret field is cleared after a failed attempt, with specific messages for wrong, malformed, unsupported and corrupted cases. The header's Lock button wipes the vault key and returns to this screen.
+- Settings screen: change the master password (with strength feedback) and regenerate the recovery code (shown once, printable, retyped to confirm), both after re-entering the current password or recovery code; choose the auto-lock timeout (1, 5, 15, 30 or 60 minutes); choose the theme (match system, light or dark).
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
 ### Changed
 
+- Architecture document describes the UI structure, routing and how the UI handles secrets; the threat model records typed secrets in the webview and printed recovery codes as residual risks; the development guide lists the UI folders; README status ticks the vault lifecycle and recovery code UI.
+- `change_master_password` and `regenerate_recovery_code` now require a `currentCredential` (the current master password, or the recovery code for the forgotten-password flow) and return `invalid_credentials` if it is wrong.
 - Vault format specification: AEAD fixed to XChaCha20-Poly1305; Argon2id bounds and salt, nonce and wrapped-key sizes filled in.
 - Vault format specification: key slot byte layout, wrapping associated data (`header ‖ slot_metadata`), slot operations and the recovery code alphabet, length, checksum, display form and parsing rules are now specified, with a recovery code test vector.
 - Vault format specification finalized for format version 0: file layout, header, record types and encoding, payload encoding and padding, integrity seal, reader validation order and test vectors. Attachments are no longer part of version 0 and will be specified with a later format version.

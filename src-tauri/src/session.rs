@@ -12,13 +12,19 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use novavault_core::{ItemContent, KdfParams, RecoveryCode, Vault};
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
 
-use crate::dto::{Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, parse_item_id};
+use crate::dto::{
+    Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, VaultStatusDto, parse_item_id,
+};
 use crate::error::{CommandError, CommandResult};
+use crate::settings::Settings;
+
+/// File name of the settings, stored next to the vault file.
+const SETTINGS_FILE_NAME: &str = "settings.json";
 
 /// State of the single vault this app manages.
 pub struct Session {
@@ -30,18 +36,53 @@ pub struct Session {
     vault: Option<Vault>,
     /// When the last command ran, for the inactivity auto-lock.
     last_activity: Instant,
+    /// Where the settings file lives: next to the vault file.
+    settings_path: PathBuf,
+    /// The current settings, loaded at startup.
+    settings: Settings,
 }
 
 impl Session {
     /// A locked session for the vault at `path`, creating key slots with
-    /// `params`.
+    /// `params`. Settings are read from `settings.json` in the same
+    /// directory, with defaults if that file is missing or invalid.
     pub fn new(path: PathBuf, params: KdfParams, now: Instant) -> Self {
+        let settings_path = path.with_file_name(SETTINGS_FILE_NAME);
+        let settings = Settings::load(&settings_path);
         Self {
             path,
             params,
             vault: None,
             last_activity: now,
+            settings_path,
+            settings,
         }
+    }
+
+    /// The current settings.
+    pub const fn settings(&self) -> Settings {
+        self.settings
+    }
+
+    /// Sets the inactivity timeout and saves the settings.
+    ///
+    /// Requires an unlocked vault, so that someone at a locked app cannot
+    /// lengthen the timeout before the owner unlocks it.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] if
+    /// `minutes` is out of bounds, or [`CommandError::Storage`] if the
+    /// file cannot be written (the previous value is then kept).
+    pub fn set_auto_lock_minutes(&mut self, minutes: u32) -> CommandResult<()> {
+        self.vault()?;
+        let mut updated = self.settings;
+        updated.set_auto_lock_minutes(minutes)?;
+        updated
+            .save(&self.settings_path)
+            .map_err(|_| CommandError::Storage)?;
+        self.settings = updated;
+        Ok(())
     }
 
     /// Records user activity at `now`, restarting the inactivity timer.
@@ -52,6 +93,19 @@ impl Session {
     /// Whether a vault is currently unlocked.
     pub const fn is_unlocked(&self) -> bool {
         self.vault.is_some()
+    }
+
+    /// Whether a vault file exists and whether it is unlocked, so the UI
+    /// can choose between the create and unlock screens.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Storage`] if the vault location cannot be checked.
+    pub fn status(&self) -> CommandResult<VaultStatusDto> {
+        Ok(VaultStatusDto {
+            exists: self.path.try_exists().map_err(|_| CommandError::Storage)?,
+            unlocked: self.is_unlocked(),
+        })
     }
 
     /// Creates a new vault protected by `password` and leaves it unlocked.
@@ -110,37 +164,68 @@ impl Session {
         self.vault.take().is_some()
     }
 
-    /// Locks the vault if it has been unlocked and idle for at least
-    /// `timeout` at `now`. Returns whether it locked.
-    pub fn lock_if_idle(&mut self, now: Instant, timeout: Duration) -> bool {
+    /// Locks the vault if it has been unlocked and idle for at least the
+    /// configured auto-lock timeout at `now`. Returns whether it locked.
+    pub fn lock_if_idle(&mut self, now: Instant) -> bool {
         self.is_unlocked()
-            && now.saturating_duration_since(self.last_activity) >= timeout
+            && now.saturating_duration_since(self.last_activity)
+                >= self.settings.auto_lock_timeout()
             && self.lock()
     }
 
-    /// Changes the master password. The recovery code keeps working.
+    /// Changes the master password after checking `current` (the current
+    /// password, or the recovery code for the forgotten-password flow).
+    /// The recovery code keeps working.
     ///
     /// # Errors
     ///
-    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] for an
-    /// empty password, or a save failure.
-    pub fn change_master_password(&mut self, new_password: &SecretString) -> CommandResult<()> {
+    /// [`CommandError::Locked`], [`CommandError::InvalidCredentials`] or
+    /// [`CommandError::InvalidRecoveryCode`] if `current` is wrong,
+    /// [`CommandError::InvalidInput`] for an empty password, or a save
+    /// failure.
+    pub fn change_master_password(
+        &mut self,
+        current: &Credential,
+        new_password: &SecretString,
+    ) -> CommandResult<()> {
+        self.verify(current)?;
         let new_password = password_bytes(new_password)?;
         let params = self.params;
         self.vault_mut()?.change_password(&new_password, params)?;
         Ok(())
     }
 
-    /// Replaces the recovery code; the previous one stops working. Returns
-    /// the new code, which the UI must show once.
+    /// Replaces the recovery code after checking `current`; the previous
+    /// code stops working. Returns the new code, which the UI must show
+    /// once.
     ///
     /// # Errors
     ///
-    /// [`CommandError::Locked`] or a save failure.
-    pub fn regenerate_recovery_code(&mut self) -> CommandResult<RecoveryCodeDto> {
+    /// [`CommandError::Locked`], the errors of a wrong `current` (see
+    /// [`Session::change_master_password`]) or a save failure.
+    pub fn regenerate_recovery_code(
+        &mut self,
+        current: &Credential,
+    ) -> CommandResult<RecoveryCodeDto> {
+        self.verify(current)?;
         let params = self.params;
         let code = self.vault_mut()?.regenerate_recovery_code(params)?;
         Ok(RecoveryCodeDto::from(&code))
+    }
+
+    /// Re-authenticates the user before a key slot change, so someone at
+    /// an unlocked but unattended app cannot take the vault over.
+    fn verify(&self, current: &Credential) -> CommandResult<()> {
+        let vault = self.vault()?;
+        match current {
+            Credential::Password(password) => {
+                vault.verify_password(&password_bytes(password)?)?;
+            }
+            Credential::RecoveryCode(code) => {
+                vault.verify_recovery_code(&RecoveryCode::parse(code.expose_secret())?)?;
+            }
+        }
+        Ok(())
     }
 
     /// Lists every item's identifier, type, title and timestamps.
@@ -229,6 +314,7 @@ fn password_bytes(password: &SecretString) -> CommandResult<SecretSlice<u8>> {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::time::Duration;
 
     use super::*;
 
@@ -353,6 +439,21 @@ mod tests {
     }
 
     #[test]
+    fn status_reports_existence_and_lock_state() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        let status = |session: &Session| {
+            let status = session.status().unwrap();
+            (status.exists, status.unlocked)
+        };
+        assert_eq!(status(&session), (false, false));
+        session.create(&s(PASSWORD)).unwrap();
+        assert_eq!(status(&session), (true, true));
+        session.lock();
+        assert_eq!(status(&session), (true, false));
+    }
+
+    #[test]
     fn missing_and_existing_vaults_are_reported() {
         let dir = TempDir::new();
         let mut session = session(&dir);
@@ -379,7 +480,7 @@ mod tests {
         );
         session.create(&s(PASSWORD)).unwrap();
         assert_eq!(
-            session.change_master_password(&s("")),
+            session.change_master_password(&with_password(PASSWORD), &s("")),
             Err(CommandError::InvalidInput)
         );
     }
@@ -403,11 +504,13 @@ mod tests {
         );
         assert_eq!(session.delete_item(&id), Err(CommandError::Locked));
         assert_eq!(
-            session.change_master_password(&s("new")),
+            session.change_master_password(&with_password(PASSWORD), &s("new")),
             Err(CommandError::Locked)
         );
         assert_eq!(
-            session.regenerate_recovery_code().err(),
+            session
+                .regenerate_recovery_code(&with_password(PASSWORD))
+                .err(),
             Some(CommandError::Locked)
         );
     }
@@ -486,7 +589,9 @@ mod tests {
         let mut session = session(&dir);
         let code = code_text(&session.create(&s(PASSWORD)).unwrap());
         session.create_item(note("Diary", "x")).unwrap();
-        session.change_master_password(&s("new password")).unwrap();
+        session
+            .change_master_password(&with_password(PASSWORD), &s("new password"))
+            .unwrap();
         session.lock();
 
         assert_eq!(
@@ -504,7 +609,11 @@ mod tests {
         let dir = TempDir::new();
         let mut session = session(&dir);
         let old = code_text(&session.create(&s(PASSWORD)).unwrap());
-        let new = code_text(&session.regenerate_recovery_code().unwrap());
+        let new = code_text(
+            &session
+                .regenerate_recovery_code(&with_password(PASSWORD))
+                .unwrap(),
+        );
         assert_ne!(old, new);
         session.lock();
 
@@ -518,25 +627,89 @@ mod tests {
     }
 
     #[test]
+    fn key_slot_changes_require_the_current_secret() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        let code = code_text(&session.create(&s(PASSWORD)).unwrap());
+
+        assert_eq!(
+            session.change_master_password(&with_password("wrong"), &s("new password")),
+            Err(CommandError::InvalidCredentials)
+        );
+        assert_eq!(
+            session
+                .regenerate_recovery_code(&with_password("wrong"))
+                .err(),
+            Some(CommandError::InvalidCredentials)
+        );
+        assert_eq!(
+            session
+                .regenerate_recovery_code(&Credential::RecoveryCode(s("typo")))
+                .err(),
+            Some(CommandError::InvalidRecoveryCode)
+        );
+        // Nothing changed: the vault stays unlocked and both secrets work.
+        assert!(session.is_unlocked());
+        session.lock();
+        session.unlock(&with_password(PASSWORD)).unwrap();
+
+        // Forgotten-password flow: the recovery code authorizes the change.
+        session
+            .change_master_password(&Credential::RecoveryCode(s(&code)), &s("new password"))
+            .unwrap();
+        session.lock();
+        session.unlock(&with_password("new password")).unwrap();
+    }
+
+    #[test]
     fn idle_sessions_lock_after_the_timeout() {
         let dir = TempDir::new();
         let start = Instant::now();
         let timeout = Duration::from_secs(300);
         let mut session = Session::new(dir.path().join("vault.nvault"), fast_params(), start);
+        assert_eq!(session.settings().auto_lock_timeout(), timeout);
         // Nothing to lock yet.
-        assert!(!session.lock_if_idle(start + timeout, timeout));
+        assert!(!session.lock_if_idle(start + timeout));
 
         session.create(&s(PASSWORD)).unwrap();
         session.touch(start);
-        assert!(!session.lock_if_idle(start + timeout - Duration::from_secs(1), timeout));
+        assert!(!session.lock_if_idle(start + timeout - Duration::from_secs(1)));
         // Activity restarts the timer.
         session.touch(start + Duration::from_secs(200));
-        assert!(!session.lock_if_idle(start + timeout, timeout));
+        assert!(!session.lock_if_idle(start + timeout));
         assert!(session.is_unlocked());
-        assert!(session.lock_if_idle(start + Duration::from_secs(500), timeout));
+        assert!(session.lock_if_idle(start + Duration::from_secs(500)));
         assert!(!session.is_unlocked());
         // A clock reading before the last activity never panics or locks.
-        assert!(!session.lock_if_idle(start, timeout));
+        assert!(!session.lock_if_idle(start));
+    }
+
+    #[test]
+    fn auto_lock_timeout_is_configurable_and_persisted() {
+        let dir = TempDir::new();
+        let start = Instant::now();
+        let path = dir.path().join("vault.nvault");
+        let mut session = Session::new(path.clone(), fast_params(), start);
+        assert_eq!(
+            session.set_auto_lock_minutes(1),
+            Err(CommandError::Locked),
+            "changing the timeout needs an unlocked vault"
+        );
+        session.create(&s(PASSWORD)).unwrap();
+        assert_eq!(
+            session.set_auto_lock_minutes(0),
+            Err(CommandError::InvalidInput)
+        );
+        session.set_auto_lock_minutes(1).unwrap();
+        session.touch(start);
+        assert!(session.lock_if_idle(start + Duration::from_secs(60)));
+
+        // A new session (next app start) reads the saved value.
+        let reloaded = Session::new(path, fast_params(), start);
+        assert_eq!(
+            reloaded.settings().auto_lock_timeout(),
+            Duration::from_secs(60)
+        );
     }
 
     #[test]

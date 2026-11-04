@@ -135,6 +135,17 @@ impl From<ItemSummary> for ItemSummaryDto {
     }
 }
 
+/// Whether a vault exists and whether it is unlocked.
+///
+/// JSON: `{ "exists": true, "unlocked": false }`.
+#[derive(Serialize)]
+pub struct VaultStatusDto {
+    /// A vault file exists at the app's vault location.
+    pub exists: bool,
+    /// The vault is currently unlocked.
+    pub unlocked: bool,
+}
+
 /// A newly created or regenerated recovery code, to show to the user once.
 ///
 /// JSON: `{ "recoveryCode": "XXXX-XXXX-…" }`.

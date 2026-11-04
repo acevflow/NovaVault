@@ -3,7 +3,7 @@
 This document describes how NovaVault is put together: its components, the layers they form, how data moves between them, and why every cryptographic operation lives in Rust.
 
 > [!NOTE]
-> NovaVault is pre-alpha. The core library (cryptographic primitives, key slots, recovery codes and the vault file format with passwords, notes and secrets) and the Tauri command layer with auto-lock are in place (see [Core library](#core-library) and [Tauri command surface](#tauri-command-surface)). The UI flows, revealing and copying secrets, and attachments are not implemented yet; those parts of this document describe the intended design and will be kept in sync with the code as they land.
+> NovaVault is pre-alpha. The core library (cryptographic primitives, key slots, recovery codes and the vault file format with passwords, notes and secrets) the Tauri command layer with auto-lock, and the UI for creating, unlocking and locking the vault and for its security settings are in place (see [Core library](#core-library), [Tauri command surface](#tauri-command-surface) and [UI](#ui)). Item screens, revealing and copying secrets, and attachments are not implemented yet; those parts of this document describe the intended design and will be kept in sync with the code as they land.
 
 ## Goals
 
@@ -88,7 +88,7 @@ Three triggers lock the vault automatically. All of them wipe the vault key (by 
 
 | Trigger | Implementation |
 | ------- | -------------- |
-| Inactivity | A background thread checks every 5 seconds and locks once 5 minutes have passed since the last command. Every command counts as activity. The timeout is fixed until settings exist. |
+| Inactivity | A background thread checks every 5 seconds and locks once the auto-lock timeout has passed since the last command. Every command counts as activity. The timeout defaults to 5 minutes and can be set from 1 to 60 minutes (`set_auto_lock_timeout`); it is stored in `settings.json` next to the vault file, which is not secret and falls back to the default if missing or invalid. |
 | System suspend | Windows: `WM_POWERBROADCAST` / `PBT_APMSUSPEND`. macOS: `NSWorkspaceWillSleepNotification`. Linux: logind `PrepareForSleep(true)`. |
 | Screen lock | Windows: `WM_WTSSESSION_CHANGE` / `WTS_SESSION_LOCK`. macOS: `com.apple.screenIsLocked` and `NSWorkspaceSessionDidResignActiveNotification` (fast user switching). Linux: logind `Session.Lock`, and `ActiveChanged(true)` from `org.freedesktop.ScreenSaver` or `org.gnome.ScreenSaver`. |
 
@@ -127,7 +127,7 @@ Triggered by the user, by the inactivity timer, or by OS events (suspend, screen
 
 ### Change master password or regenerate the recovery code
 
-With the vault unlocked, the core derives a new wrapping key from the new secret and re-wraps the existing vault key, replacing only the corresponding key slot. Records and attachments are not re-encrypted. Regenerating the recovery code replaces the recovery slot, which invalidates the previous code.
+With the vault unlocked, the user first re-enters the current master password (or the recovery code, if the password is forgotten); the core checks it by unwrapping the matching in-memory key slot, so an unattended unlocked app cannot be taken over. The core then derives a new wrapping key from the new secret and re-wraps the existing vault key, replacing only the corresponding key slot. Records and attachments are not re-encrypted. Regenerating the recovery code replaces the recovery slot, which invalidates the previous code.
 
 ## Tauri command surface
 
@@ -135,19 +135,22 @@ With the vault unlocked, the core derives a new wrapping key from the new secret
 - No command ever returns the vault key, wrapping keys, KDF output, or raw ciphertext.
 - Inputs are validated in Rust; errors returned to the UI are typed and contain no secret material.
 - Every handler (`src-tauri/src/commands.rs`) moves its arguments to a blocking worker thread, because Argon2id takes a noticeable time, then locks the session and delegates to it.
-- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these nine and no core plugin permission. A test checks that the two lists match.
+- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these twelve and no core plugin permission. A test checks that the two lists match.
 
 ### Commands
 
-Arguments are camelCase in JavaScript (`invoke('change_master_password', { newPassword })`).
+Arguments are camelCase in JavaScript (`invoke('change_master_password', { currentCredential, newPassword })`). `credential` and `currentCredential` share one shape: `{ method: "password" | "recoveryCode", secret }`.
 
 | Command | Arguments | Returns | Notes |
 | ------- | --------- | ------- | ----- |
+| `vault_status` | none | `{ exists, unlocked }` | Lets the UI choose the create or unlock screen at startup. |
 | `create_vault` | `password` | `{ recoveryCode }` | Creates the vault and leaves it unlocked. The code (`XXXX-XXXX-…`) is returned only here; the UI must show it once and have the user confirm it was saved. |
 | `unlock` | `credential`: `{ method: "password" \| "recoveryCode", secret }` | nothing | Locks any open vault first, so a failed attempt leaves the app locked. Recovery codes are accepted in any case, with or without dashes. |
 | `lock` | none | nothing | Wipes the vault key. |
-| `change_master_password` | `newPassword` | nothing | Re-wraps the vault key in the password slot. Works after unlocking with the recovery code (forgotten-password flow). |
-| `regenerate_recovery_code` | none | `{ recoveryCode }` | Replaces the recovery slot; the previous code stops working. |
+| `change_master_password` | `currentCredential`, `newPassword` | nothing | Checks `currentCredential` first, then re-wraps the vault key in the password slot. The recovery code is accepted as the current credential (forgotten-password flow). |
+| `regenerate_recovery_code` | `currentCredential` | `{ recoveryCode }` | Checks `currentCredential` first, then replaces the recovery slot; the previous code stops working. |
+| `get_settings` | none | `{ autoLockMinutes }` | Works while locked; settings are not secret. |
+| `set_auto_lock_timeout` | `minutes` | nothing | Requires an unlocked vault. `invalid_input` outside 1 to 60. |
 | `list_items` | none | `[{ id, kind, title, createdAtMs, updatedAtMs }]` | No secret fields. `kind` is `"password"`, `"note"` or `"secret"`; `id` is 32 hex digits. |
 | `create_item` | `item` | `id` | |
 | `update_item` | `id`, `item` | nothing | The new content may have a different kind. |
@@ -176,10 +179,30 @@ A failed command rejects with `{ code, message }`. The message is a fixed string
 | `storage` | The vault file could not be read or written. |
 | `internal` | Unexpected failure, for example of the system random number generator. |
 
+## UI
+
+The UI (`ui/src`) is a React + TypeScript app built with Vite. It holds no keys and calls only the commands listed above.
+
+| Path | Contents |
+| ---- | -------- |
+| `api/` | Typed wrappers over every command (`commands.ts`), DTO types (`types.ts`) and `CommandError` with the error codes and user-facing messages (`errors.ts`). This is the only code that calls `invoke`. |
+| `app/` | The router (a reducer over a `Route` union, not a router library: there are few screens and no URLs) and the app shell (skip link, navigation, lock button). |
+| `screens/` | Create vault, unlock, vault home and settings. |
+| `recovery/` | `RecoveryCodeFlow`: shows a new recovery code once, prints it, and requires retyping it. Used at creation and on regeneration. |
+| `password/` | Lazy-loaded zxcvbn strength estimate, strength meter and new-password fields. A master password must rate at least 3 of 4 (“Strong”). |
+| `components/` | Accessible base components: button, text and password fields, alert, focus-managed headings. |
+| `theme/` | Light and dark themes from CSS tokens, following the system unless the user picks one. The choice (not secret) is kept in `localStorage`. |
+
+Routing starts from `vault_status`: no vault leads to the create flow, a locked vault to the unlock screen. A `locked` error from any command, the Lock button and every auto-lock (which reloads the webview) all end on the unlock screen.
+
+Secrets in the UI: the master password, the recovery code while it is shown or retyped, and re-authentication secrets live only in component state. They are cleared after use and after failed attempts, never logged and never written to storage. JavaScript cannot wipe strings, so this limits how long they stay reachable rather than guaranteeing erasure (see the threat model). There is no copy button for the recovery code: the clipboard is shared with other apps, and clipboard auto-clear is not implemented yet.
+
+Printing uses `window.print()` with a print stylesheet that hides everything except the recovery sheet.
+
 ## Shell hardening
 
 - **Content Security Policy:** strict, with no remote origins, no inline scripts and no `eval`.
-- **Capabilities:** only the nine vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
+- **Capabilities:** only the twelve vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
 - **No network:** core features do not open network connections.
 
 ## Why all cryptography lives in Rust
@@ -234,9 +257,17 @@ Shell (`src-tauri`) dependencies that handle secrets or OS security events:
 | [`secrecy`](https://crates.io/crates/secrecy) (`serde` feature) | Secret command arguments | Deserializes passwords, recovery codes and secret fields straight into `SecretString`, so Rust never holds them in a plain `String`. Serialization of secrets stays disabled. |
 | [`zeroize`](https://crates.io/crates/zeroize) (`derive`) | Wiping responses | Item titles in list responses are wiped once serialized. |
 | [`serde`](https://crates.io/crates/serde) | IPC (de)serialization | Already used by Tauri for every command; no new crate. |
+| [`serde_json`](https://crates.io/crates/serde_json) | Settings file | Reads and writes the non-secret `settings.json`. Already a Tauri dependency; no new crate. |
 | [`windows`](https://crates.io/crates/windows) (Windows only) | Suspend and screen-lock events | Microsoft's official Win32 bindings, same version Tauri already uses. Only the window, library loader and remote desktop session APIs are enabled. |
 | [`objc2-app-kit`](https://crates.io/crates/objc2-app-kit), [`objc2-foundation`](https://crates.io/crates/objc2-foundation), [`block2`](https://crates.io/crates/block2) (macOS only) | Sleep and screen-lock notifications | The Objective-C bindings Tauri itself uses, same versions; only `NSWorkspace` and the notification center APIs are enabled. |
 | [`zbus`](https://crates.io/crates/zbus), [`futures-util`](https://crates.io/crates/futures-util) (Linux only) | logind and screen saver D-Bus signals | Pure-Rust D-Bus with no C library, run on Tauri's Tokio runtime (no extra executor, default features off). `futures-util` is already a Tauri dependency. Talks only to local system and session buses, never the network. |
+
+UI (`ui/`) runtime dependencies. None of them implements cryptography; they are listed because they handle secrets typed by the user:
+
+| Package | Purpose | Justification |
+| ------- | ------- | ------------- |
+| [`@tauri-apps/api`](https://www.npmjs.com/package/@tauri-apps/api) | IPC | The official Tauri client: `invoke` calls the shell's commands (the global Tauri API is disabled), and `mockIPC` fakes the shell in component tests. |
+| [`@zxcvbn-ts/core`](https://www.npmjs.com/package/@zxcvbn-ts/core), [`@zxcvbn-ts/language-common`](https://www.npmjs.com/package/@zxcvbn-ts/language-common), [`@zxcvbn-ts/language-en`](https://www.npmjs.com/package/@zxcvbn-ts/language-en) | Master password strength feedback | Maintained TypeScript port of Dropbox's zxcvbn: estimates guesses from dictionaries, common passwords, keyboard patterns and dates, which a length-and-classes heuristic cannot. Runs entirely in the webview with no network access, on a password the UI already holds while the user types it. Loaded lazily so the dictionaries do not slow startup. |
 
 ### Test vectors
 

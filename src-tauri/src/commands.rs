@@ -16,9 +16,10 @@ use std::time::Instant;
 use secrecy::SecretString;
 use tauri::{AppHandle, Manager};
 
-use crate::dto::{Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto};
+use crate::dto::{Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, VaultStatusDto};
 use crate::error::{CommandError, CommandResult};
 use crate::session::Session;
+use crate::settings::Settings;
 
 /// Shared app state: the single vault session.
 pub struct AppState {
@@ -58,6 +59,12 @@ async fn run<T: Send + 'static>(
     .map_err(|_| CommandError::Internal)?
 }
 
+/// Reports whether a vault exists and whether it is unlocked.
+#[tauri::command]
+pub async fn vault_status(app: AppHandle) -> CommandResult<VaultStatusDto> {
+    run(app, |session| session.status()).await
+}
+
 /// Creates a new vault protected by `password` and leaves it unlocked.
 /// Returns the recovery code, which the UI must show exactly once.
 #[tauri::command]
@@ -84,22 +91,43 @@ pub async fn lock(app: AppHandle) -> CommandResult<()> {
     .await
 }
 
-/// Changes the master password of the unlocked vault.
+/// Changes the master password of the unlocked vault, after checking the
+/// current password or recovery code.
 #[tauri::command]
 pub async fn change_master_password(
     app: AppHandle,
+    current_credential: Credential,
     new_password: SecretString,
 ) -> CommandResult<()> {
     run(app, move |session| {
-        session.change_master_password(&new_password)
+        session.change_master_password(&current_credential, &new_password)
     })
     .await
 }
 
-/// Replaces the recovery code and returns the new one, to show once.
+/// Replaces the recovery code, after checking the current password or
+/// recovery code, and returns the new one, to show once.
 #[tauri::command]
-pub async fn regenerate_recovery_code(app: AppHandle) -> CommandResult<RecoveryCodeDto> {
-    run(app, Session::regenerate_recovery_code).await
+pub async fn regenerate_recovery_code(
+    app: AppHandle,
+    current_credential: Credential,
+) -> CommandResult<RecoveryCodeDto> {
+    run(app, move |session| {
+        session.regenerate_recovery_code(&current_credential)
+    })
+    .await
+}
+
+/// Returns the app settings. Works while locked: they are not secret.
+#[tauri::command]
+pub async fn get_settings(app: AppHandle) -> CommandResult<Settings> {
+    run(app, |session| Ok(session.settings())).await
+}
+
+/// Sets the inactivity auto-lock timeout, in minutes (1 to 60).
+#[tauri::command]
+pub async fn set_auto_lock_timeout(app: AppHandle, minutes: u32) -> CommandResult<()> {
+    run(app, move |session| session.set_auto_lock_minutes(minutes)).await
 }
 
 /// Lists the items of the unlocked vault, without secret fields.

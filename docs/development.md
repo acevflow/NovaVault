@@ -117,6 +117,14 @@ scripts/check.mjs        full local check
 crates/novavault-core/   Rust library: crypto, vault format, key slots (UI-independent)
 src-tauri/               thin Tauri 2 shell: commands, OS hooks, CSP, capabilities
 ui/                      React + TypeScript front end (Vite, ESLint, Prettier, Vitest)
+  src/api/               typed wrappers over the Tauri commands, error codes
+  src/app/               router and app shell
+  src/screens/           create, unlock, home and settings screens
+  src/recovery/          one-time recovery code display, print and confirmation
+  src/password/          password strength (zxcvbn) and new-password fields
+  src/components/        accessible base components
+  src/theme/             light and dark themes
+  src/test/              test setup and the mockIPC helper that fakes the shell
 docs/                    architecture, threat model, vault format, this guide
 assets/                  logo and other static assets
 .github/                 CI workflow, Dependabot, issue and PR templates
