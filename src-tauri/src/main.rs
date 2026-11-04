@@ -7,6 +7,7 @@
 //!
 //! Modules:
 //!
+//! - `autolock`: locking on inactivity and OS events, and resetting the UI.
 //! - `commands`: the Tauri command handlers (the whole IPC surface).
 //! - `session`: the unlocked vault and the logic behind every command.
 //! - `dto`: command inputs and outputs.
@@ -15,6 +16,7 @@
 // Hide the extra console window on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autolock;
 mod commands;
 mod dto;
 mod error;
@@ -41,6 +43,7 @@ fn main() -> ExitCode {
             let path = app.path().app_data_dir()?.join(VAULT_FILE_NAME);
             let session = Session::new(path, KdfParams::default(), Instant::now());
             app.manage(AppState::new(session));
+            autolock::start_idle_timer(app.handle().clone());
             Ok(())
         })
         // Keep in sync with `COMMANDS` in build.rs, which generates the
