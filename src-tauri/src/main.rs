@@ -8,6 +8,7 @@
 //! Modules:
 //!
 //! - `autolock`: locking on inactivity and OS events, and resetting the UI.
+//! - `os_lock`: per-OS suspend and screen-lock monitors.
 //! - `commands`: the Tauri command handlers (the whole IPC surface).
 //! - `session`: the unlocked vault and the logic behind every command.
 //! - `dto`: command inputs and outputs.
@@ -20,15 +21,19 @@ mod autolock;
 mod commands;
 mod dto;
 mod error;
+mod os_lock;
 mod session;
 
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::Instant;
 
 use novavault_core::KdfParams;
 use tauri::Manager;
 
+use crate::autolock::LockReason;
 use crate::commands::AppState;
+use crate::os_lock::LockSink;
 use crate::session::Session;
 
 /// File name of the vault inside the app data directory.
@@ -44,6 +49,7 @@ fn main() -> ExitCode {
             let session = Session::new(path, KdfParams::default(), Instant::now());
             app.manage(AppState::new(session));
             autolock::start_idle_timer(app.handle().clone());
+            start_os_lock_monitor(app.handle().clone());
             Ok(())
         })
         // Keep in sync with `COMMANDS` in build.rs, which generates the
@@ -67,6 +73,18 @@ fn main() -> ExitCode {
             eprintln!("NovaVault failed: {error}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Locks the vault on system suspend and screen lock.
+///
+/// Not fatal if it fails: the inactivity timer and manual locking still
+/// protect the vault, so the app starts and reports the problem.
+fn start_os_lock_monitor(app: tauri::AppHandle) {
+    let sink: LockSink =
+        Arc::new(move |reason: LockReason| autolock::lock_and_reset_ui(&app, reason));
+    if let Err(error) = os_lock::platform_monitor().start(sink) {
+        eprintln!("NovaVault: {error}");
     }
 }
 
