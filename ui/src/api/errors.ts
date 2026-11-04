@@ -19,6 +19,7 @@ export const ERROR_CODES = [
   'unsupported_vault',
   'corrupted',
   'storage',
+  'clipboard_unavailable',
   'internal',
 ] as const;
 
@@ -84,6 +85,7 @@ const MESSAGES: Record<ErrorCode, string> = {
     'The vault file is not supported by this version of NovaVault. You may need a newer version.',
   corrupted: 'The vault file is damaged and cannot be opened.',
   storage: 'The vault file could not be read or written. Check the disk and try again.',
+  clipboard_unavailable: 'The clipboard is not available right now. Try again.',
   internal: 'Something went wrong. Please try again.',
 };
 

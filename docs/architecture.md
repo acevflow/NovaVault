@@ -84,7 +84,7 @@ header (32) ‖ password slot (101) ‖ recovery slot (101) ‖ record_count ‖
 
 ## Auto-lock
 
-Three triggers lock the vault automatically. All of them wipe the vault key (by dropping the `Vault`) and then reload the main webview. Reloading throws away everything the UI holds in memory and returns it to its start screen without the UI having to subscribe to events, so the webview needs no event permission.
+Three triggers lock the vault automatically. All of them wipe the vault key (by dropping the `Vault`), clear a copied field from the clipboard (see [Clipboard](#clipboard)) and then reload the main webview. Reloading throws away everything the UI holds in memory and returns it to its start screen without the UI having to subscribe to events, so the webview needs no event permission.
 
 | Trigger | Implementation |
 | ------- | -------------- |
@@ -116,14 +116,19 @@ Three triggers lock the vault automatically. All of them wipe the vault key (by 
 
 ### Read and edit a record
 
-1. The UI requests a record by identifier.
-2. The core decrypts it with the vault key, verifying its authentication tag, and returns only the fields the screen needs.
-3. Secret field values (such as a password) are returned only when the user explicitly reveals them. Copying a secret is done by a dedicated command that places it on the clipboard from Rust and schedules auto-clear, so the value does not need to pass through the UI at all.
-4. Edits are sent as field values; the core re-encrypts the record with a fresh nonce and writes it atomically.
+1. The UI lists items with `list_items` (identifiers, types, titles and timestamps only) and searches and filters that list itself.
+2. Selecting an item calls `get_item`. The core decrypts the record, verifying its authentication tag, and the shell returns the plain fields (title, user name, URL, timestamps) and, for each secret field, only whether it is set.
+3. A secret field's value (password, notes, note text, secret value) is sent only when the user clicks **Reveal**, one field at a time, with `reveal_item_field`. The UI keeps it in component state and drops it when the user hides it or leaves the item.
+4. **Copy** calls `copy_item_field`: the shell reads the field and places it on the clipboard itself, so the value never passes through the UI (see [Clipboard](#clipboard)).
+5. Edits are sent with `update_item`. Secret fields the user did not change are sent as `null` and keep their stored value, so the edit form never needs secrets the user did not reveal. The core re-encrypts the record with a fresh nonce and writes the file atomically.
+
+### Clipboard
+
+Copying runs on one worker thread in the shell (`src-tauri/src/clipboard.rs`) that owns the clipboard through `arboard` for the lifetime of the app; on X11 and Wayland the copying process must keep serving the contents. The worker clears the clipboard after the configured delay (`set_clipboard_clear_delay`, 5 to 300 seconds, default 30), when the vault locks and when the app exits, but only if the clipboard still holds the copied value. Each copy carries the platform's clipboard-history opt-out. Per-OS behaviour, including X11 and Wayland, is described in [clipboard.md](clipboard.md).
 
 ### Lock
 
-Triggered by the user, by the inactivity timer, or by OS events (suspend, screen lock) observed in the shell. The core zeroizes the vault key and drops the session; the UI clears its in-memory view state and returns to the unlock screen.
+Triggered by the user, by the inactivity timer, or by OS events (suspend, screen lock) observed in the shell. The core zeroizes the vault key and drops the session, the shell clears a copied field from the clipboard, and the UI clears its in-memory view state and returns to the unlock screen.
 
 ### Change master password or regenerate the recovery code
 
@@ -135,7 +140,7 @@ With the vault unlocked, the user first re-enters the current master password (o
 - No command ever returns the vault key, wrapping keys, KDF output, or raw ciphertext.
 - Inputs are validated in Rust; errors returned to the UI are typed and contain no secret material.
 - Every handler (`src-tauri/src/commands.rs`) moves its arguments to a blocking worker thread, because Argon2id takes a noticeable time, then locks the session and delegates to it.
-- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these twelve and no core plugin permission. A test checks that the two lists match.
+- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these sixteen and no core plugin permission. A test checks that the two lists match.
 
 ### Commands
 
@@ -149,14 +154,20 @@ Arguments are camelCase in JavaScript (`invoke('change_master_password', { curre
 | `lock` | none | nothing | Wipes the vault key. |
 | `change_master_password` | `currentCredential`, `newPassword` | nothing | Checks `currentCredential` first, then re-wraps the vault key in the password slot. The recovery code is accepted as the current credential (forgotten-password flow). |
 | `regenerate_recovery_code` | `currentCredential` | `{ recoveryCode }` | Checks `currentCredential` first, then replaces the recovery slot; the previous code stops working. |
-| `get_settings` | none | `{ autoLockMinutes }` | Works while locked; settings are not secret. |
+| `get_settings` | none | `{ autoLockMinutes, clipboardClearSeconds }` | Works while locked; settings are not secret. |
 | `set_auto_lock_timeout` | `minutes` | nothing | Requires an unlocked vault. `invalid_input` outside 1 to 60. |
+| `set_clipboard_clear_delay` | `seconds` | nothing | Requires an unlocked vault. `invalid_input` outside 5 to 300. |
 | `list_items` | none | `[{ id, kind, title, createdAtMs, updatedAtMs }]` | No secret fields. `kind` is `"password"`, `"note"` or `"secret"`; `id` is 32 hex digits. |
+| `get_item` | `id` | item details (below) | Plain fields and `has*` flags only; never a secret value. |
+| `reveal_item_field` | `id`, `field` | `{ value }` | One secret field: `"password"`, `"notes"`, `"body"` or `"value"`. `invalid_input` for a plain field or a field the item's kind does not have. Call only when the user asks to see the value. |
+| `copy_item_field` | `id`, `field` | `{ clearAfterSeconds }` | Copies any field (also `"username"` and `"url"`) to the clipboard from Rust; the value is not returned. `clipboard_unavailable` if the clipboard cannot be written. |
 | `create_item` | `item` | `id` | |
-| `update_item` | `id`, `item` | nothing | The new content may have a different kind. |
+| `update_item` | `id`, `item` | nothing | Secret fields set to `null` (or left out) keep their stored value. The kind must match the stored item (`invalid_input` otherwise). |
 | `delete_item` | `id` | nothing | |
 
-`item` is tagged by `kind`: `{ kind: "password", title, username, password, url, notes }`, `{ kind: "note", title, body }` or `{ kind: "secret", title, value, notes }`. Every field is required (use empty strings). Secret fields are deserialized straight into `SecretString`.
+`item` is tagged by `kind`: `{ kind: "password", title, username, password, url, notes }`, `{ kind: "note", title, body }` or `{ kind: "secret", title, value, notes }`. For `create_item` every field is required (use empty strings). Secret fields are deserialized straight into `SecretString`.
+
+Item details from `get_item` are `{ id, kind, title, createdAtMs, updatedAtMs, … }` with, per kind: `password`: `username`, `url`, `hasPassword`, `hasNotes`; `note`: `hasBody`; `secret`: `hasValue`, `hasNotes`.
 
 Every edit is saved to disk at once (atomically). If a save fails, the command returns `storage`; the edit stays in memory and is written by the next successful save.
 
@@ -177,6 +188,7 @@ A failed command rejects with `{ code, message }`. The message is a fixed string
 | `unsupported_vault` | Not a vault file, or a newer format version or unknown algorithm. |
 | `corrupted` | The file failed a structural or integrity check. |
 | `storage` | The vault file could not be read or written. |
+| `clipboard_unavailable` | The system clipboard could not be opened or written. |
 | `internal` | Unexpected failure, for example of the system random number generator. |
 
 ## UI
@@ -187,22 +199,25 @@ The UI (`ui/src`) is a React + TypeScript app built with Vite. It holds no keys 
 | ---- | -------- |
 | `api/` | Typed wrappers over every command (`commands.ts`), DTO types (`types.ts`) and `CommandError` with the error codes and user-facing messages (`errors.ts`). This is the only code that calls `invoke`. |
 | `app/` | The router (a reducer over a `Route` union, not a router library: there are few screens and no URLs) and the app shell (skip link, navigation, lock button). |
-| `screens/` | Create vault, unlock, vault home and settings. |
+| `screens/` | Create vault, unlock, settings, and `items/`: the vault screen with the item list (title search and type filter in `filterItems.ts`), item details, the create and edit form and the delete confirmation. |
 | `recovery/` | `RecoveryCodeFlow`: shows a new recovery code once, prints it, and requires retyping it. Used at creation and on regeneration. |
 | `password/` | Lazy-loaded zxcvbn strength estimate, strength meter and new-password fields. A master password must rate at least 3 of 4 (“Strong”). |
-| `components/` | Accessible base components: button, text and password fields, alert, focus-managed headings. |
+| `components/` | Accessible base components: button, text, text area and password fields, alert, focus-managed headings, `SecretField` (hidden until revealed) and `CopyButton`. |
+| `format/` | Text formatting helpers (durations). |
 | `theme/` | Light and dark themes from CSS tokens, following the system unless the user picks one. The choice (not secret) is kept in `localStorage`. |
 
 Routing starts from `vault_status`: no vault leads to the create flow, a locked vault to the unlock screen. A `locked` error from any command, the Lock button and every auto-lock (which reloads the webview) all end on the unlock screen.
 
-Secrets in the UI: the master password, the recovery code while it is shown or retyped, and re-authentication secrets live only in component state. They are cleared after use and after failed attempts, never logged and never written to storage. JavaScript cannot wipe strings, so this limits how long they stay reachable rather than guaranteeing erasure (see the threat model). There is no copy button for the recovery code: the clipboard is shared with other apps, and clipboard auto-clear is not implemented yet.
+Secrets in the UI: the master password, the recovery code while it is shown or retyped, and re-authentication secrets live only in component state. They are cleared after use and after failed attempts, never logged and never written to storage. JavaScript cannot wipe strings, so this limits how long they stay reachable rather than guaranteeing erasure (see the threat model). There is no copy button for the recovery code: it is not stored in the vault, so the shell cannot copy it, and it should be written down rather than pasted.
+
+Secret item fields are masked by default. A revealed value lives only in the state of its `SecretField` and is dropped when hidden, when another item is selected and on lock. The edit form starts secret fields empty and sends `null` for any the user did not change; **Reveal current …** loads the stored value only on request. Copy buttons never receive the value.
 
 Printing uses `window.print()` with a print stylesheet that hides everything except the recovery sheet.
 
 ## Shell hardening
 
 - **Content Security Policy:** strict, with no remote origins, no inline scripts and no `eval`.
-- **Capabilities:** only the twelve vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
+- **Capabilities:** only the sixteen vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
 - **No network:** core features do not open network connections.
 
 ## Why all cryptography lives in Rust
@@ -255,9 +270,10 @@ Shell (`src-tauri`) dependencies that handle secrets or OS security events:
 | Crate | Purpose | Justification |
 | ----- | ------- | ------------- |
 | [`secrecy`](https://crates.io/crates/secrecy) (`serde` feature) | Secret command arguments | Deserializes passwords, recovery codes and secret fields straight into `SecretString`, so Rust never holds them in a plain `String`. Serialization of secrets stays disabled. |
-| [`zeroize`](https://crates.io/crates/zeroize) (`derive`) | Wiping responses | Item titles in list responses are wiped once serialized. |
+| [`zeroize`](https://crates.io/crates/zeroize) (`derive`) | Wiping responses | Item titles, user names and URLs in list and details responses, and values copied to the clipboard, are wiped once used. |
 | [`serde`](https://crates.io/crates/serde) | IPC (de)serialization | Already used by Tauri for every command; no new crate. |
 | [`serde_json`](https://crates.io/crates/serde_json) | Settings file | Reads and writes the non-secret `settings.json`. Already a Tauri dependency; no new crate. |
+| [`arboard`](https://crates.io/crates/arboard) | Clipboard copy and clear | Maintained by 1Password for exactly this use; one API for Windows, macOS, X11 and Wayland, including the clipboard-history opt-outs (Windows history and cloud formats, macOS `ConcealedType`, KDE password hint). Default features are off (no image support). The `wayland-data-control` feature adds the pure-Rust `wl-clipboard-rs` so the clipboard works natively on Wayland; without it only XWayland would work. Doing the copy in Rust is what keeps copied values out of the webview. |
 | [`windows`](https://crates.io/crates/windows) (Windows only) | Suspend and screen-lock events | Microsoft's official Win32 bindings, same version Tauri already uses. Only the window, library loader and remote desktop session APIs are enabled. |
 | [`objc2-app-kit`](https://crates.io/crates/objc2-app-kit), [`objc2-foundation`](https://crates.io/crates/objc2-foundation), [`block2`](https://crates.io/crates/block2) (macOS only) | Sleep and screen-lock notifications | The Objective-C bindings Tauri itself uses, same versions; only `NSWorkspace` and the notification center APIs are enabled. |
 | [`zbus`](https://crates.io/crates/zbus), [`futures-util`](https://crates.io/crates/futures-util) (Linux only) | logind and screen saver D-Bus signals | Pure-Rust D-Bus with no C library, run on Tauri's Tokio runtime (no extra executor, default features off). `futures-util` is already a Tauri dependency. Talks only to local system and session buses, never the network. |
@@ -281,3 +297,4 @@ UI (`ui/`) runtime dependencies. None of them implements cryptography; they are 
 - [Threat model](threat-model.md)
 - [Vault format specification](vault-format.md)
 - [Development guide](development.md)
+- [Clipboard behaviour](clipboard.md)

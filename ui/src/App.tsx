@@ -5,7 +5,7 @@ import { errorMessage } from './api/errors';
 import { AppShell } from './app/AppShell';
 import { initialRoute, isUnlockedRoute, routerReducer, type Route } from './app/router';
 import { CreateVaultScreen } from './screens/create/CreateVaultScreen';
-import { HomeScreen } from './screens/HomeScreen';
+import { ItemsScreen } from './screens/items/ItemsScreen';
 import { SettingsScreen } from './screens/settings/SettingsScreen';
 import { LoadingScreen, StartupErrorScreen } from './screens/StatusScreens';
 import { UnlockScreen } from './screens/unlock/UnlockScreen';
@@ -51,6 +51,12 @@ export function App() {
       });
   }, []);
 
+  // Stable, so screens can list it as an effect dependency without
+  // reloading on every render of the shell.
+  const handleLocked = useCallback(() => {
+    dispatch({ type: 'locked' });
+  }, []);
+
   return (
     <ThemeProvider>
       <AppShell
@@ -69,9 +75,7 @@ export function App() {
           onUnlocked={() => {
             dispatch({ type: 'unlocked' });
           }}
-          onLocked={() => {
-            dispatch({ type: 'locked' });
-          }}
+          onLocked={handleLocked}
         />
       </AppShell>
     </ThemeProvider>
@@ -92,7 +96,7 @@ function Screen({ route, onRetry, onUnlocked, onLocked }: ScreenProps) {
     case 'startupError':
       return <StartupErrorScreen message={route.message} onRetry={onRetry} />;
     case 'home':
-      return <HomeScreen />;
+      return <ItemsScreen onLocked={onLocked} />;
     case 'create':
       return <CreateVaultScreen onCreated={onUnlocked} />;
     case 'unlock':

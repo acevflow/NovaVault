@@ -67,7 +67,7 @@ Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it priv
 ## Building from source
 
 > [!NOTE]
-> The project scaffold is in place, but no vault features are implemented yet: the app opens a placeholder window. Per-OS setup is detailed in the [development guide](docs/development.md).
+> You can create, unlock and lock a vault, and manage passwords, notes and secrets, but NovaVault is not ready for real secrets yet. Per-OS setup is detailed in the [development guide](docs/development.md).
 
 Prerequisites:
 
@@ -98,11 +98,11 @@ NovaVault is **pre-alpha**. Current progress toward the MVP:
 - [x] Core vault file format: versioned header, key slots, encrypted password, note and secret records, whole-file integrity seal, atomic saves (attachments come with the attachments feature below)
 - [x] Tauri command layer: create, unlock and lock a vault; list, create, update and delete items; change the master password and regenerate the recovery code; configurable auto-lock timeout
 - [x] Create, unlock and lock a vault (UI)
-- [ ] Passwords, notes and secrets (CRUD, UI)
+- [x] Passwords, notes and secrets (UI): list with title search and type filter, create, view, edit and delete; secret fields hidden until revealed
 - [ ] Encrypted file attachments
 - [x] Emergency recovery code and master password change (UI)
 - [x] Auto-lock on inactivity, suspend and screen lock
-- [ ] Clipboard auto-clear
+- [x] Copy to clipboard from Rust with configurable auto-clear (also on lock and exit)
 - [x] Public vault format specification (format version 0, pre-release; attachments to be specified)
 - [x] CI builds and tests on Windows, macOS and Linux
 - [ ] First release
@@ -117,8 +117,9 @@ Project documentation lives in [`docs/`](docs/README.md):
 - [Threat model](docs/threat-model.md): assets, adversaries, threats and mitigations.
 - [Vault format specification](docs/vault-format.md): the versioned, public on-disk format (version 0, pre-release).
 - [Development guide](docs/development.md): setup per OS, commands and project layout.
+- [Clipboard behaviour](docs/clipboard.md): how copy and auto-clear work on Windows, macOS, X11 and Wayland.
 
-Planned: **Cryptography and dependencies**, covering algorithms, parameters and the justification for every cryptography-related crate.
+Algorithms, parameters and the justification for every cryptography-related crate are in [Architecture: Cryptography and dependencies](docs/architecture.md#cryptography-and-dependencies).
 
 ## Contributing
 

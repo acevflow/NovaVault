@@ -119,13 +119,14 @@ src-tauri/               thin Tauri 2 shell: commands, OS hooks, CSP, capabiliti
 ui/                      React + TypeScript front end (Vite, ESLint, Prettier, Vitest)
   src/api/               typed wrappers over the Tauri commands, error codes
   src/app/               router and app shell
-  src/screens/           create, unlock, home and settings screens
+  src/screens/           create, unlock and settings screens; items/ (list, details, form)
   src/recovery/          one-time recovery code display, print and confirmation
   src/password/          password strength (zxcvbn) and new-password fields
-  src/components/        accessible base components
+  src/components/        accessible base components, secret field and copy button
+  src/format/            text formatting helpers
   src/theme/             light and dark themes
   src/test/              test setup and the mockIPC helper that fakes the shell
-docs/                    architecture, threat model, vault format, this guide
+docs/                    architecture, threat model, vault format, clipboard, this guide
 assets/                  logo and other static assets
 .github/                 CI workflow, Dependabot, issue and PR templates
 README.md                project overview and status

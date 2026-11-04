@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Manager};
 
+use crate::clipboard::ClipboardManager;
 use crate::commands::AppState;
 
 /// How often the idle timer is checked; bounds how late the lock can be.
@@ -57,6 +58,7 @@ pub fn lock_and_reset_ui(app: &AppHandle, reason: LockReason) {
     if !locked {
         return;
     }
+    app.state::<ClipboardManager>().clear();
     if let Some(window) = app.get_webview_window("main") {
         if window.reload().is_err() {
             // The key is already wiped; only the UI's stale view remains.

@@ -64,9 +64,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create-vault flow: master password with live zxcvbn strength feedback (at least “Strong” required) and confirmation, then a one-time recovery code screen with a print-only sheet, an “I have saved it” confirmation and a retype step that must match the code before the vault opens.
 - Unlock screen with keyboard-accessible tabs for the master password and the recovery code (forgotten-password flow); the secret field is cleared after a failed attempt, with specific messages for wrong, malformed, unsupported and corrupted cases. The header's Lock button wipes the vault key and returns to this screen.
 - Settings screen: change the master password (with strength feedback) and regenerate the recovery code (shown once, printable, retyped to confirm), both after re-entering the current password or recovery code; choose the auto-lock timeout (1, 5, 15, 30 or 60 minutes); choose the theme (match system, light or dark).
+- Clipboard behaviour document (`docs/clipboard.md`): how copy and auto-clear work, and per-OS behaviour on Windows, macOS, X11 and Wayland (data-control and the XWayland fallback), linked from the README and the docs index.
 - Cryptography and dependencies section in `docs/architecture.md`: algorithms, parameters, the XChaCha20-Poly1305 choice and the justification for every cryptography-related crate.
 
+- `get_item` command: an item's plain fields (title, user name, URL, timestamps) and, for each secret field, only whether it is set. Secret values never come with it.
+- `reveal_item_field` command: returns one secret field (password, notes, note body or secret value) when the user asks to see it.
+- Item list on the vault screen: every password, note and secret sorted by title with its type, a search by title (ignoring case and accents), a type filter, a live result count, empty and no-match states, and a retry if loading fails. Typed UI wrappers for the item commands.
+- Create, view, edit and delete passwords, notes and secrets. Item details show plain fields and keep every secret field hidden until the user reveals it (fetched from the shell on demand and dropped when hidden). The edit form leaves secret fields empty and keeps their stored values unless the user types a new one or loads the current one with “Reveal current …”. Deleting asks for confirmation (focus starts on Cancel; Escape cancels). Titles are required.
+- Copy to clipboard with automatic clearing, handled in Rust: `copy_item_field` reads the field and copies it from the shell, so the value never reaches the UI. The clipboard is cleared after a configurable delay, when the vault locks (manually or automatically) and when the app exits, but only if it still holds the copied value. Clipboard history and cloud sync are asked to skip copied values (Windows history and cloud formats, macOS `org.nspasteboard.ConcealedType`, Linux `x-kde-passwordManagerHint`). Copy buttons for every field on the item details, with a polite status announcing when the clipboard clears.
+- Clipboard clear delay setting: `set_clipboard_clear_delay` command (5 to 300 seconds, default 30; requires an unlocked vault), stored in `settings.json` (older files without it still load), and a Clipboard section in Settings (10 seconds, 30 seconds, 1 minute or 2 minutes).
+- `clipboard_unavailable` error code.
+
 ### Changed
+
+- Architecture document describes the item commands, the read, reveal and copy data flow, the clipboard worker, the items UI and the `arboard` dependency; the threat model records clipboard exposure and per-field reveal; the development guide lists the new UI folders; README status ticks item management and clipboard auto-clear.
 
 - Architecture document describes the UI structure, routing and how the UI handles secrets; the threat model records typed secrets in the webview and printed recovery codes as residual risks; the development guide lists the UI folders; README status ticks the vault lifecycle and recovery code UI.
 - `change_master_password` and `regenerate_recovery_code` now require a `currentCredential` (the current master password, or the recovery code for the forgotten-password flow) and return `invalid_credentials` if it is wrong.
@@ -74,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vault format specification: key slot byte layout, wrapping associated data (`header ‖ slot_metadata`), slot operations and the recovery code alphabet, length, checksum, display form and parsing rules are now specified, with a recovery code test vector.
 - Vault format specification finalized for format version 0: file layout, header, record types and encoding, payload encoding and padding, integrity seal, reader validation order and test vectors. Attachments are no longer part of version 0 and will be specified with a later format version.
 - Architecture document describes the core library modules and the vault file; the threat model records the payload padding and the integrity seal.
+- `update_item` now keeps a secret field's stored value when it is sent as `null` or left out, so editing an item never requires loading its secrets into the UI; changing an item's type is rejected with `invalid_input`.
 - CI builds the UI before the Rust checks (the Tauri shell embeds the built UI) and checks UI formatting; Dependabot also tracks the root npm package (Tauri CLI).
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main

@@ -16,9 +16,11 @@ use std::time::Instant;
 
 use novavault_core::{ItemContent, KdfParams, RecoveryCode, Vault};
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
+use zeroize::Zeroizing;
 
 use crate::dto::{
-    Credential, ItemInput, ItemSummaryDto, RecoveryCodeDto, VaultStatusDto, parse_item_id,
+    Credential, ItemDetailsDto, ItemField, ItemInput, ItemSummaryDto, ItemUpdate, RecoveryCodeDto,
+    RevealedValueDto, VaultStatusDto, parse_item_id,
 };
 use crate::error::{CommandError, CommandResult};
 use crate::settings::Settings;
@@ -78,6 +80,26 @@ impl Session {
         self.vault()?;
         let mut updated = self.settings;
         updated.set_auto_lock_minutes(minutes)?;
+        updated
+            .save(&self.settings_path)
+            .map_err(|_| CommandError::Storage)?;
+        self.settings = updated;
+        Ok(())
+    }
+
+    /// Sets the clipboard clear delay and saves the settings.
+    ///
+    /// Requires an unlocked vault, like [`Session::set_auto_lock_minutes`].
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] if
+    /// `seconds` is out of bounds, or [`CommandError::Storage`] if the
+    /// file cannot be written (the previous value is then kept).
+    pub fn set_clipboard_clear_seconds(&mut self, seconds: u32) -> CommandResult<()> {
+        self.vault()?;
+        let mut updated = self.settings;
+        updated.set_clipboard_clear_seconds(seconds)?;
         updated
             .save(&self.settings_path)
             .map_err(|_| CommandError::Storage)?;
@@ -251,17 +273,59 @@ impl Session {
         Ok(id.to_string())
     }
 
-    /// Replaces the content of item `id` and saves.
+    /// Returns item `id` with its plain fields, and for each secret field
+    /// only whether it is set.
     ///
     /// # Errors
     ///
     /// [`CommandError::Locked`], [`CommandError::InvalidInput`] for a
-    /// malformed identifier, [`CommandError::ItemNotFound`],
-    /// [`CommandError::InvalidItem`] or a save failure.
-    pub fn update_item(&mut self, id: &str, item: ItemInput) -> CommandResult<()> {
+    /// malformed identifier, [`CommandError::ItemNotFound`] or
+    /// [`CommandError::Corrupted`].
+    pub fn get_item(&self, id: &str) -> CommandResult<ItemDetailsDto> {
+        let item = self.vault()?.get(parse_item_id(id)?)?;
+        Ok(ItemDetailsDto::from(&item))
+    }
+
+    /// Returns the value of one secret field of item `id`.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::InvalidInput`] if `field` is not a secret field of
+    /// this item's kind (plain fields come with [`Session::get_item`]),
+    /// and the errors of [`Session::get_item`].
+    pub fn reveal_field(&self, id: &str, field: ItemField) -> CommandResult<RevealedValueDto> {
+        if !field.is_secret() {
+            return Err(CommandError::InvalidInput);
+        }
+        let value = self.field_text(id, field)?;
+        Ok(RevealedValueDto::new(SecretString::from(value.as_str())))
+    }
+
+    /// A copy of the text of `field` in item `id`, in zeroizing storage.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::InvalidInput`] if items of this kind have no such
+    /// field, and the errors of [`Session::get_item`].
+    pub fn field_text(&self, id: &str, field: ItemField) -> CommandResult<Zeroizing<String>> {
+        let item = self.vault()?.get(parse_item_id(id)?)?;
+        Ok(Zeroizing::new(field.value_in(item.content())?.to_owned()))
+    }
+
+    /// Updates item `id` and saves. Secret fields left out of `update`
+    /// keep their stored values.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] for a
+    /// malformed identifier or a kind that does not match the stored item,
+    /// [`CommandError::ItemNotFound`], [`CommandError::InvalidItem`] or a
+    /// save failure.
+    pub fn update_item(&mut self, id: &str, update: ItemUpdate) -> CommandResult<()> {
         let vault = self.vault_mut()?;
         let id = parse_item_id(id)?;
-        vault.update(id, ItemContent::from(item))?;
+        let content = update.apply_to(vault.get(id)?.into_content())?;
+        vault.update(id, content)?;
         vault.save()?;
         Ok(())
     }
@@ -370,6 +434,31 @@ mod tests {
             title: title.into(),
             body: s(body),
         }
+    }
+
+    fn note_update(title: &str, body: Option<&str>) -> ItemUpdate {
+        ItemUpdate::Note {
+            title: title.into(),
+            body: body.map(s),
+        }
+    }
+
+    fn login(password: &str, notes: &str) -> ItemInput {
+        ItemInput::Password {
+            title: "Bank".into(),
+            username: "alice".into(),
+            password: s(password),
+            url: "https://bank.example".into(),
+            notes: s(notes),
+        }
+    }
+
+    fn revealed(session: &Session, id: &str, field: ItemField) -> CommandResult<String> {
+        let dto = session.reveal_field(id, field)?;
+        Ok(serde_json::to_value(dto).unwrap()["value"]
+            .as_str()
+            .unwrap()
+            .to_owned())
     }
 
     fn with_password(password: &str) -> Credential {
@@ -499,7 +588,7 @@ mod tests {
             Err(CommandError::Locked)
         );
         assert_eq!(
-            session.update_item(&id, note("a", "b")),
+            session.update_item(&id, note_update("a", Some("b"))),
             Err(CommandError::Locked)
         );
         assert_eq!(session.delete_item(&id), Err(CommandError::Locked));
@@ -529,7 +618,7 @@ mod tests {
             })
             .unwrap();
         session
-            .update_item(&keep, note("Journal", "second"))
+            .update_item(&keep, note_update("Journal", Some("second")))
             .unwrap();
         session.delete_item(&drop_me).unwrap();
 
@@ -564,13 +653,133 @@ mod tests {
     }
 
     #[test]
+    fn item_details_have_plain_fields_and_flags_only() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        session.create(&s(PASSWORD)).unwrap();
+        let id = session.create_item(login("hunter2", "")).unwrap();
+        let json = serde_json::to_value(session.get_item(&id).unwrap()).unwrap();
+        assert_eq!(json["id"], id.as_str());
+        assert_eq!(json["kind"], "password");
+        assert_eq!(json["title"], "Bank");
+        assert_eq!(json["username"], "alice");
+        assert_eq!(json["url"], "https://bank.example");
+        assert_eq!(json["hasPassword"], true);
+        assert_eq!(json["hasNotes"], false);
+        assert!(!json.to_string().contains("hunter2"), "{json}");
+
+        let note_id = session.create_item(note("Diary", "")).unwrap();
+        let json = serde_json::to_value(session.get_item(&note_id).unwrap()).unwrap();
+        assert_eq!(json["kind"], "note");
+        assert_eq!(json["hasBody"], false);
+    }
+
+    #[test]
+    fn secret_fields_are_revealed_one_at_a_time() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        session.create(&s(PASSWORD)).unwrap();
+        let login_id = session.create_item(login("hunter2", "PIN")).unwrap();
+        let note_id = session.create_item(note("Diary", "dear diary")).unwrap();
+        let secret_id = session
+            .create_item(ItemInput::Secret {
+                title: "API".into(),
+                value: s("sk-123"),
+                notes: s("rotate yearly"),
+            })
+            .unwrap();
+
+        let cases = [
+            (&login_id, ItemField::Password, "hunter2"),
+            (&login_id, ItemField::Notes, "PIN"),
+            (&note_id, ItemField::Body, "dear diary"),
+            (&secret_id, ItemField::Value, "sk-123"),
+            (&secret_id, ItemField::Notes, "rotate yearly"),
+        ];
+        for (id, field, expected) in cases {
+            assert_eq!(revealed(&session, id, field).unwrap(), expected);
+        }
+        // Plain fields are not revealed, and fields of another kind do not
+        // exist.
+        for (id, field) in [
+            (&login_id, ItemField::Username),
+            (&login_id, ItemField::Url),
+            (&login_id, ItemField::Body),
+            (&note_id, ItemField::Password),
+            (&secret_id, ItemField::Body),
+        ] {
+            assert_eq!(
+                revealed(&session, id, field),
+                Err(CommandError::InvalidInput),
+                "{field:?}"
+            );
+        }
+        let username = session.field_text(&login_id, ItemField::Username).unwrap();
+        assert_eq!(username.as_str(), "alice");
+
+        session.lock();
+        assert_eq!(
+            revealed(&session, &login_id, ItemField::Password),
+            Err(CommandError::Locked)
+        );
+        assert_eq!(
+            session.get_item(&login_id).err(),
+            Some(CommandError::Locked)
+        );
+    }
+
+    #[test]
+    fn updates_keep_secret_fields_that_are_left_out() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        session.create(&s(PASSWORD)).unwrap();
+        let id = session.create_item(login("hunter2", "PIN")).unwrap();
+        let update = ItemUpdate::Password {
+            title: "Bank (joint)".into(),
+            username: "bob".into(),
+            password: None,
+            url: "https://bank.example/login".into(),
+            notes: Some(s("")),
+        };
+        session.update_item(&id, update).unwrap();
+
+        // Re-open from disk: the merged item was saved.
+        session.lock();
+        session.unlock(&with_password(PASSWORD)).unwrap();
+        let json = serde_json::to_value(session.get_item(&id).unwrap()).unwrap();
+        assert_eq!(json["title"], "Bank (joint)");
+        assert_eq!(json["username"], "bob");
+        assert_eq!(json["hasNotes"], false);
+        assert_eq!(
+            revealed(&session, &id, ItemField::Password).unwrap(),
+            "hunter2"
+        );
+    }
+
+    #[test]
+    fn updates_cannot_change_the_kind_of_an_item() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        session.create(&s(PASSWORD)).unwrap();
+        let id = session.create_item(login("hunter2", "")).unwrap();
+        assert_eq!(
+            session.update_item(&id, note_update("x", Some("y"))),
+            Err(CommandError::InvalidInput)
+        );
+        assert_eq!(
+            revealed(&session, &id, ItemField::Password).unwrap(),
+            "hunter2"
+        );
+    }
+
+    #[test]
     fn unknown_or_malformed_item_ids_are_reported() {
         let dir = TempDir::new();
         let mut session = session(&dir);
         session.create(&s(PASSWORD)).unwrap();
         let missing = "00".repeat(16);
         assert_eq!(
-            session.update_item(&missing, note("a", "b")),
+            session.update_item(&missing, note_update("a", Some("b"))),
             Err(CommandError::ItemNotFound)
         );
         assert_eq!(
@@ -682,6 +891,26 @@ mod tests {
         assert!(!session.is_unlocked());
         // A clock reading before the last activity never panics or locks.
         assert!(!session.lock_if_idle(start));
+    }
+
+    #[test]
+    fn clipboard_delay_is_configurable_and_persisted() {
+        let dir = TempDir::new();
+        let path = dir.path().join("vault.nvault");
+        let mut session = Session::new(path.clone(), fast_params(), Instant::now());
+        assert_eq!(
+            session.set_clipboard_clear_seconds(10),
+            Err(CommandError::Locked),
+            "changing the delay needs an unlocked vault"
+        );
+        session.create(&s(PASSWORD)).unwrap();
+        assert_eq!(
+            session.set_clipboard_clear_seconds(1),
+            Err(CommandError::InvalidInput)
+        );
+        session.set_clipboard_clear_seconds(10).unwrap();
+        let reloaded = Session::new(path, fast_params(), Instant::now());
+        assert_eq!(reloaded.settings().clipboard_clear_seconds(), 10);
     }
 
     #[test]
