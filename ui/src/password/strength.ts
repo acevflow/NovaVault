@@ -37,6 +37,7 @@ export const STRENGTH_LABELS: Readonly<Record<StrengthScore, string>> = {
   4: 'Very strong',
 };
 
+/** The estimator, loaded once and shared by every call; `null` until first use. */
 let estimator: Promise<ZxcvbnFactory> | null = null;
 
 async function loadEstimator(): Promise<ZxcvbnFactory> {

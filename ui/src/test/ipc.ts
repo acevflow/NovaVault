@@ -45,6 +45,7 @@ export class ShellError extends Error {
   /** The error code. */
   readonly code: ErrorCode;
 
+  /** @param code - The error code to reject with. */
   constructor(code: ErrorCode) {
     super(`shell error: ${code}`);
     this.code = code;

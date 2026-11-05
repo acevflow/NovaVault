@@ -100,19 +100,32 @@ interface ItemDetailsBase {
 export type ItemDetails =
   | (ItemDetailsBase & {
       readonly kind: 'password';
+      /** Login name; not secret. */
       readonly username: string;
+      /** Website address; not secret. */
       readonly url: string;
+      /** Whether a password is stored. */
       readonly hasPassword: boolean;
+      /** Whether notes are stored. */
       readonly hasNotes: boolean;
     })
-  | (ItemDetailsBase & { readonly kind: 'note'; readonly hasBody: boolean })
+  | (ItemDetailsBase & {
+      readonly kind: 'note';
+      /** Whether the note has text. */
+      readonly hasBody: boolean;
+    })
   | (ItemDetailsBase & {
       readonly kind: 'secret';
+      /** Whether a secret value is stored. */
       readonly hasValue: boolean;
+      /** Whether notes are stored. */
       readonly hasNotes: boolean;
     });
 
-/** The content of a new item, tagged by `kind`. */
+/**
+ * The content of a new item, tagged by `kind`. Secret fields (`password`,
+ * `notes`, `body`, `value`) go to the shell once and are not kept.
+ */
 export type ItemInput =
   | {
       readonly kind: 'password';
@@ -132,7 +145,8 @@ export type ItemInput =
 
 /**
  * New content for an existing item. A secret field set to `null` keeps its
- * stored value. The kind must match the stored item's kind.
+ * stored value, which lets the edit form save without ever reading it; an
+ * empty string clears it. The kind must match the stored item's kind.
  */
 export type ItemUpdate =
   | {
