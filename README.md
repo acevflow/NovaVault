@@ -46,17 +46,16 @@ Explicitly out of scope: cloud sync, browser extension or autofill, mobile apps 
 
 ## Security model
 
-A short summary. The full design is described in the [architecture](docs/architecture.md) and [threat model](docs/threat-model.md) documents.
+A short summary. The full design is in [security design](docs/security-design.md), [architecture](docs/architecture.md) and the [threat model](docs/threat-model.md), which also lists known limitations.
 
-- **Local only.** The vault is a single file on disk. NovaVault does not need network access for any core feature.
-- **Rust owns the secrets.** All cryptography and data access live in the Rust core. The React UI never receives the vault key or any raw key material; it talks to the core through a minimal set of Tauri commands.
-- **Audited primitives only.** No custom cryptography. NovaVault relies on audited crates from the RustCrypto project (or `age`).
-- **Key derivation:** Argon2id.
-- **Authenticated encryption:** XChaCha20-Poly1305 or AES-GCM.
-- **Two key slots.** A random 256-bit vault key encrypts all data. It is stored wrapped twice: once under a key derived from the master password and once under a key derived from the recovery code. Either slot opens the vault, and changing the master password only re-wraps the vault key.
-- **Memory hygiene.** Secrets are held in `secrecy` types and wiped with `zeroize`. Secrets are never logged.
-- **Hardened shell.** Strict Content Security Policy and a minimal Tauri capability set.
-- **Open format.** The vault format is versioned and documented as a public specification ([format version 0](docs/vault-format.md), pre-release).
+- **Local only.** The vault is a single file (plus one encrypted blob per attachment) in the app data directory. Core features never open a network connection.
+- **Rust owns the secrets.** All cryptography and data access live in the Rust core (`crates/novavault-core`). The React UI never receives the vault key, a wrapping key or any key derivation output, and it talks to the core only through a small set of Tauri commands (see the [API reference](docs/api-reference.md)). Secret field values cross into the UI only when you reveal them, and copying happens in Rust.
+- **Two audited primitives, no custom cryptography.** Argon2id (RFC 9106: 64 MiB, 3 iterations, 4 lanes) for key derivation and XChaCha20-Poly1305 with a fresh random 192-bit nonce for every encryption, both from RustCrypto crates. Every cryptography-related dependency is justified in [dependencies.md](docs/dependencies.md).
+- **Two key slots.** A random 256-bit vault key encrypts all data. It is stored wrapped twice, once under a key derived from the master password and once under a key derived from the 150-bit recovery code, and either slot opens the vault. Changing the master password or regenerating the recovery code rewrites only its own slot.
+- **Tamper detection.** Records, key slots and attachment chunks are authenticated with associated data that binds them to the vault and their position, and a whole-file integrity seal detects removed, duplicated, reordered or replayed records. Saves are atomic.
+- **Memory hygiene.** Keys and secret values are held in `secrecy` types and wiped with `zeroize`, and secrets are never logged. Locking wipes the vault key.
+- **Hardened shell.** Strict production Content Security Policy, frozen prototypes, no global Tauri API, and a capability that grants only NovaVault's own commands. File dialogs are opened from Rust, so the UI never handles file paths.
+- **Open format.** The vault format is versioned and documented as a public specification ([format version 1](docs/vault-format.md), pre-release), with test vectors.
 
 Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it privately.
 
