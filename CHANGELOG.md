@@ -84,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- README rewritten to match the implemented code: features described as available, a single planned item (first release), the security model naming the algorithms actually used and vault format version 1, per-OS prerequisites, build and run commands and data locations, a project structure overview, and links to every document in `docs/`.
 - Key slots authenticate the vault header with its version field zeroed, so format migrations never need to rewrap a slot; the version stays authenticated by the records and the integrity seal.
 - Locking the vault manually or on suspend or screen lock stops a running attachment transfer at its next chunk instead of waiting for it.
 - The `corrupted` error message no longer refers only to the vault file, since it also covers damaged attachments.
