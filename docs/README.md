@@ -12,6 +12,7 @@ Design and contributor documentation for NovaVault. Start with the architecture,
 | [Security design](security-design.md) | Key hierarchy, recovery code flow, memory handling, auto-lock and clipboard behaviour, with per-OS notes. |
 | [Cryptography dependencies](dependencies.md) | Every cryptography-related dependency with its locked version and the reason it was chosen. |
 | [Vault format specification](vault-format.md) | Versioned on-disk format: header, key slots, encrypted records, integrity seal, encrypted attachment blobs, migration, reader rules and test vectors. Format version 1, pre-release. |
+| [API reference](api-reference.md) | Every Tauri command the UI can call, with its arguments, return value and error codes. |
 | [Development guide](development.md) | Setup on Windows, macOS and Linux, commands and project layout. |
 | [Clipboard behaviour](clipboard.md) | How copy and auto-clear work, and what happens on Windows, macOS, X11 and Wayland. |
 

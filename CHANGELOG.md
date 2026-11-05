@@ -80,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Attachments on the item details screen: list with size and date, attach a file, export it, or remove it after confirmation, with a progress bar during transfers.
 - Security design document (`docs/security-design.md`): key hierarchy, recovery code flow, master password change, memory handling, auto-lock and clipboard behaviour, with per-OS notes.
 - Cryptography dependency inventory (`docs/dependencies.md`): every cryptography-related crate and package with its locked version, the reason it was chosen and the rejected alternatives.
+- Tauri command API reference (`docs/api-reference.md`): every command with its arguments, return value and error codes, the shared JSON types and how to add a command; linked from the documentation index.
 
 ### Changed
 
@@ -98,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Architecture document describes the core library modules and the vault file; the threat model records the payload padding and the integrity seal.
 - `update_item` now keeps a secret field's stored value when it is sent as `null` or left out, so editing an item never requires loading its secrets into the UI; changing an item's type is rejected with `invalid_input`.
 - Threat model lists only implemented mitigations and adds a section of known limitations and gaps; corrected the recovery code entropy (150 bits), removed the claim of fuzz testing and clarified that new key slots always use the default Argon2id parameters. The architecture document links to the dependency inventory instead of duplicating it.
+- Development guide commands verified: UI tests in watch mode now run from `ui/` (started from the repository root, Vitest skipped the UI config and most tests failed), Rust commands use `--locked` like CI, and the individual UI scripts and core-only Rust checks are listed.
 - CI builds the UI before the Rust checks (the Tauri shell embeds the built UI) and checks UI formatting; Dependabot also tracks the root npm package (Tauri CLI).
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main
