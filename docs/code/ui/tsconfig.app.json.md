@@ -35,7 +35,7 @@ The TypeScript configuration for the browser code: everything under `ui/src/`, i
 ### Strictness
 
 - `strict` plus the extra `no*` flags implement the "strict mode" rule in `CLAUDE.md`. The "no `any`" rule is enforced separately by [`eslint.config.js`](eslint.config.js.md).
-- `noUncheckedIndexedAccess` forces code to handle a missing entry on every record or array lookup, for example when [`api/errors.ts`](src/api/errors.ts.md) maps error codes to messages.
+- `noUncheckedIndexedAccess` forces code to handle a missing entry on every array index and index-signature lookup.
 - `exactOptionalPropertyTypes` means an optional field in [`api/types.ts`](src/api/types.ts.md) is either present with a value or absent; it is never an explicit `undefined`.
 
 ### Module settings
