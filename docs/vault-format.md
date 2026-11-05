@@ -36,7 +36,7 @@ Design goals:
 
 | Purpose | Algorithm | Notes |
 | ------- | --------- | ----- |
-| Key derivation | Argon2id v0x13 (RFC 9106) | Parameters stored per key slot. Readers MUST reject memory below 19 MiB or above 4 GiB, iterations below 2 or above 64, and parallelism below 1 or above 16. Writers use 64 MiB, 3 iterations and 4 lanes by default. Output is 32 bytes. |
+| Key derivation | Argon2id v0x13 (RFC 9106) | Parameters stored per key slot. Readers MUST reject memory below 19 MiB (19 456 KiB) or above 4 GiB (4 194 304 KiB), iterations below 2 or above 64, and parallelism below 1 or above 16. Writers use 64 MiB (65 536 KiB), 3 iterations and 4 lanes by default. Output is 32 bytes. |
 | Authenticated encryption | XChaCha20-Poly1305 (draft-irtf-cfrg-xchacha) | 256-bit key, 24-byte random nonce, 16-byte tag. Rationale in [architecture.md](architecture.md#why-xchacha20-poly1305-rather-than-aes-gcm). The header records the algorithm identifier so the choice is explicit in every file. |
 | Vault key | 256-bit random key | Generated once at vault creation. |
 | Randomness | OS CSPRNG | Used for the vault key, vault, record and attachment identifiers, salts, nonces and the recovery code. |
@@ -58,9 +58,9 @@ offset              size              section
 len(file) − 40      40                integrity seal     (§8)
 ```
 
-A file MUST NOT contain any byte after the integrity seal. Writers MUST NOT produce files larger than 256 MiB, and readers MUST reject them (after checking the magic and version, §12).
+A file MUST NOT contain any byte after the integrity seal. Writers MUST NOT produce files larger than 256 MiB, and readers MUST reject them (after checking the header, §12).
 
-Writes MUST be atomic: a new version of the file is written to a temporary file in the same directory, flushed to disk, and then renamed over the old one. On systems with POSIX permissions the file SHOULD be readable and writable by its owner only.
+Writes MUST be atomic: a new version of the file is written to a temporary file in the same directory, flushed to disk, and then renamed over the old one. NovaVault also syncs the directory after the rename on Unix, so the rename itself survives a crash. On systems with POSIX permissions the file SHOULD be readable and writable by its owner only (NovaVault creates it with mode `0600`).
 
 The recommended file extension is `.nvault`.
 
@@ -128,7 +128,7 @@ Unwrapping performs the same derivation and `XChaCha20-Poly1305_Decrypt`. An aut
 
 The `secret` input is:
 
-- **`password` slot:** the UTF-8 bytes of the master password, exactly as entered. Unicode normalization (for example NFC) is *to be decided before format version 1*; until then, a password typed with a different Unicode composition will not match.
+- **`password` slot:** the UTF-8 bytes of the master password, exactly as entered. No Unicode normalization and no trimming is applied, so a password typed with a different Unicode composition (for example a precomposed `é` instead of `e` plus a combining accent) does not match. Introducing normalization would change the key derivation input, so it would require a new format version (§11). NovaVault refuses an empty master password; that is an application check, not a format rule.
 - **`recovery` slot:** the 32 ASCII bytes of the recovery code in canonical form (§10): upper case, no separators, checksum symbols included.
 
 ### 6.4 Operations
@@ -259,7 +259,7 @@ To read attachment `a` of a record, a reader:
 1. Opens `<a.attachment_id>.nvatt`. A missing blob is a corrupted attachment.
 2. Reads 48 bytes and checks them in order: `magic` (otherwise: not a blob, corrupted), `blob_version` (otherwise: unsupported version), `aead_id` (otherwise: unsupported algorithm), zero `reserved`, then that `vault_id` and `attachment_id` equal the vault's and the record's. Any mismatch is a corrupted attachment.
 3. Reads chunks of up to `CHUNK_LEN + 40` bytes. A chunk is final if it is shorter than that or if the file ends right after it. A chunk shorter than 40 bytes is corrupted. Each chunk is opened with `ad_i` built from its position and finality before any of its plaintext is released.
-4. Stops after the final chunk and checks that the total plaintext length equals `a.size`.
+4. Stops after the final chunk and checks that the total plaintext length equals `a.size`. NovaVault also stops as soon as the running total exceeds `a.size`.
 
 Any failure is fatal for that attachment and leaves the rest of the vault readable. Because a damaged chunk is only found when it is reached, a reader that writes the plaintext to a file MUST write it to a temporary file and delete that file on failure, so no partial, partly unauthenticated output remains; NovaVault renames the temporary file to the user's chosen name only after step 4 succeeds.
 
@@ -268,7 +268,7 @@ Any failure is fatal for that attachment and leaves the rest of the vault readab
 - **Add.** A new random `attachment_id` is generated. The blob is written in full to a temporary file in the attachments directory, flushed and renamed to its final name; only then is the record updated to list it. The record change is saved like any other edit.
 - **Immutability.** A blob is never rewritten. Each `attachment_id` is used for exactly one blob, so there is never an older valid version of a blob to roll back to.
 - **Remove.** The attachment is removed from its record (or the whole record is removed), and the vault file is saved. Only after that save succeeds is the blob deleted, so the saved vault file never refers to a missing blob because of a removal.
-- **Clean-up.** An interrupted add or a save that never happened can leave a blob that no record lists. When a vault is opened, writers MAY delete blob files that no record refers to, and temporary files named `.<blob name>.<16 hex digits>.tmp`. NovaVault does so.
+- **Clean-up.** An interrupted add or a save that never happened can leave a blob that no record lists. When a vault is opened, writers MAY delete blob files that no record refers to, and temporary files named `.<blob name>.<16 hex digits>.tmp`. NovaVault does so after any migration (§11.1) and after checking that attachment identifiers are unique (§12, step 9). It deletes only regular files, skips names that are not valid UTF-8, and matches blob names case-insensitively in their hexadecimal part. Failures are ignored and retried on the next open.
 
 ### 9.6 Integrity
 
@@ -281,7 +281,7 @@ The vault file's integrity seal (§8) authenticates every attachment's metadata,
 - **Checksum:** with `v[0..30]` the values of the random symbols, `c = (Σ (i + 1) · v[i]) mod 1021`, appended as two symbols with values `c / 32` and `c mod 32`. Because 1021 is a prime larger than every weight and every symbol difference, the checksum detects every single-symbol substitution and every swap of two adjacent symbols in the random part, and every single-symbol substitution in the checksum. It is a typo check, not a security mechanism.
 - **Canonical form:** the 32 symbols (random part then checksum), upper case, no separators. This is the Argon2id input (§6.3).
 - **Display form:** the canonical form in 8 groups of 4 symbols separated by `-`, for example `ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789`.
-- **Parsing:** input is upper-cased and `-` and whitespace are removed. Readers MUST then reject input that does not have exactly 32 symbols, contains a character outside the alphabet, or fails the checksum, before running Argon2id.
+- **Parsing:** ASCII letters are upper-cased and `-` and whitespace are removed. Readers MUST then reject input that contains a character outside the alphabet, does not have exactly 32 symbols, or fails the checksum, before running Argon2id. NovaVault checks in that order and reports each case with its own error.
 - Shown once at creation and at each regeneration. The user MUST confirm they saved it before the operation completes (an application-level step). The vault never stores the code itself.
 
 ## 11. Versioning and compatibility
@@ -305,7 +305,7 @@ A version 0 file is upgraded when it is unlocked, with either secret:
 3. Re-encrypt every record with the version 1 header (`format_version = 1`) in its associated data and a version 1 payload with `attachment_count = 0`, using fresh nonces.
 4. Write a copy of the original file as `<file name>.v0.bak` next to it.
 5. Write the version 1 file (same key slots, new records, new seal) atomically (§4).
-6. Read the new file back and verify it (structure and seal). Then delete the backup.
+6. Read the new file back and verify it: structure, seal, and a header and records identical to those written. Then delete the backup.
 
 If step 5 fails, the original file is untouched and the backup is deleted. If step 6 fails, the backup is kept. The key slots are not changed, so the master password and the recovery code both keep working.
 
@@ -314,7 +314,7 @@ If step 5 fails, the original file is untouched and the backup is deleted. If st
 A conforming reader MUST perform these steps in order and stop at the first failure:
 
 1. Check `magic` (otherwise: not a vault file), then `format_version`, which must be 0 or 1 (otherwise: unsupported version).
-2. Check the rest of the header: known `aead_id`, zero `flags` and `reserved`, `slot_count` of 2.
+2. Check the rest of the header, in this order: a header of 32 bytes, known `aead_id` (otherwise: unsupported algorithm), zero `flags`, `slot_count` of 2, zero `reserved`.
 3. Reject files larger than 256 MiB.
 4. Parse the key slot table: known slot types in the order `password`, `recovery`, and KDF parameters within the bounds of §3.
 5. Parse the record framing: `record_count` and each `sealed_len` within bounds, known record types, strictly ascending `record_id`, and exactly 40 bytes left for the seal.
@@ -374,3 +374,4 @@ Key derivation and AEAD vectors (RFC 9106 Argon2id, draft-irtf-cfrg-xchacha XCha
 | 0 (draft) | 2026-11-03 | Key slot encoding, wrapping associated data, slot operations and recovery code format specified. |
 | 0 | 2026-11-03 | Header, file layout, record types, record encoding and encryption, payload encoding and padding, integrity seal, reader validation order and test vectors specified. Attachments moved out of version 0. |
 | 1 | 2026-11-05 | Encrypted file attachments: attachment list in the record payload, blob files with chunked authenticated encryption, storage, lifecycle and reader rules (§9). Key slots authenticate the header with the version zeroed. Migration from version 0 (§11.1). New test vectors. |
+| 1 | 2026-11-05 | Aligned with the implementation, no format change: master passwords are not Unicode-normalized (§6.3), KDF bounds in KiB, header check order (§12), size check after the header (§4), blob size and clean-up details (§9.4, §9.5), recovery code check order (§10), migration read-back (§11.1). |
