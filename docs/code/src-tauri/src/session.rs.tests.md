@@ -24,7 +24,30 @@ The inline `#[cfg(test)] mod tests` of `session.rs` is the shell's main integrat
 | `titles`                   | helper | `fn titles(session: &Session) -> Vec<String>`                                | Sorted titles from `list_items`.                                |
 | `keep_going`               | helper | `fn keep_going(_: u64) -> ControlFlow<()>`                                   | Progress callback that never cancels.                           |
 | `user_file`                | helper | `fn user_file(dir: &TempDir, name: &str, contents: &[u8]) -> PathBuf`        | Writes a "user" file to attach.                                 |
-| 24 tests                   | test   | `fn <name>()`                                                                | Listed in **Details**, in source order.                         |
+| `create_lock_and_unlock_with_either_secret` | test | `fn create_lock_and_unlock_with_either_secret()` | Create, lock, and unlock with the password or a loosely typed recovery code. |
+| `wrong_or_malformed_secrets_leave_the_session_locked` | test | `fn wrong_or_malformed_secrets_leave_the_session_locked()` | Wrong or malformed secrets give typed errors and leave the session locked. |
+| `status_reports_existence_and_lock_state` | test | `fn status_reports_existence_and_lock_state()` | `(exists, unlocked)` follows create and lock. |
+| `missing_and_existing_vaults_are_reported` | test | `fn missing_and_existing_vaults_are_reported()` | `VaultNotFound` before a vault exists, `VaultExists` on a second create. |
+| `empty_passwords_are_rejected` | test | `fn empty_passwords_are_rejected()` | Empty passwords give `InvalidInput` on create and password change. |
+| `data_commands_require_an_unlocked_vault` | test | `fn data_commands_require_an_unlocked_vault()` | Data and key slot commands return `Locked` after `lock`. |
+| `item_edits_are_saved_immediately` | test | `fn item_edits_are_saved_immediately()` | Item edits survive a lock and unlock. |
+| `listing_never_serializes_secret_fields` | test | `fn listing_never_serializes_secret_fields()` | The `list_items` JSON holds titles but no field values. |
+| `item_details_have_plain_fields_and_flags_only` | test | `fn item_details_have_plain_fields_and_flags_only()` | `get_item` returns plain fields and `has*` flags, never secrets. |
+| `secret_fields_are_revealed_one_at_a_time` | test | `fn secret_fields_are_revealed_one_at_a_time()` | `reveal_field` returns secret fields only and requires an unlocked vault. |
+| `updates_keep_secret_fields_that_are_left_out` | test | `fn updates_keep_secret_fields_that_are_left_out()` | `None` keeps a secret field, an empty string clears it. |
+| `updates_cannot_change_the_kind_of_an_item` | test | `fn updates_cannot_change_the_kind_of_an_item()` | An update of another kind gives `InvalidInput`. |
+| `unknown_or_malformed_item_ids_are_reported` | test | `fn unknown_or_malformed_item_ids_are_reported()` | `ItemNotFound` for unknown ids, `InvalidInput` for malformed ones. |
+| `changing_the_master_password` | test | `fn changing_the_master_password()` | Only the password slot changes; the recovery code still works. |
+| `regenerating_the_recovery_code_invalidates_the_old_one` | test | `fn regenerating_the_recovery_code_invalidates_the_old_one()` | The old code stops working; the new code and password unlock. |
+| `key_slot_changes_require_the_current_secret` | test | `fn key_slot_changes_require_the_current_secret()` | Key slot changes need the current password or recovery code. |
+| `idle_sessions_lock_after_the_timeout` | test | `fn idle_sessions_lock_after_the_timeout()` | The session locks after the idle timeout; activity restarts it. |
+| `clipboard_delay_is_configurable_and_persisted` | test | `fn clipboard_delay_is_configurable_and_persisted()` | The clipboard delay is validated and persisted. |
+| `auto_lock_timeout_is_configurable_and_persisted` | test | `fn auto_lock_timeout_is_configurable_and_persisted()` | The auto-lock timeout is validated, applied at once and persisted. |
+| `attachments_are_added_exported_and_deleted` | test | `fn attachments_are_added_exported_and_deleted()` | Attachments are added, survive reopening, export identically and delete once. |
+| `deleting_an_item_deletes_its_attachment_data` | test | `fn deleting_an_item_deletes_its_attachment_data()` | Deleting an item removes its blobs. |
+| `attachment_commands_report_their_errors` | test | `fn attachment_commands_report_their_errors()` | Attachment commands map each failure to its error code. |
+| `attachment_dtos_never_contain_paths` | test | `fn attachment_dtos_never_contain_paths()` | Attachment DTOs contain no file system paths. |
+| `debug_shows_only_lock_state` | test | `fn debug_shows_only_lock_state()` | `Debug` shows the lock state, not the vault path. |
 
 ## Details
 

@@ -114,7 +114,7 @@ The vault (`vault.nvault`), its attachments folder and a non-secret `settings.js
 | [`crates/novavault-core/`](crates/novavault-core) | Rust library: cryptography, vault format, key slots, recovery codes and attachments. UI-independent. |
 | [`src-tauri/`](src-tauri) | Thin Tauri 2 shell: the vault session, commands, auto-lock, clipboard, CSP and capabilities. |
 | [`ui/`](ui) | React + TypeScript front end (Vite, ESLint, Prettier, Vitest). |
-| [`docs/`](docs/README.md) | Architecture, threat model, security design, vault format, API reference and development guide. |
+| [`docs/`](docs/README.md) | Architecture, threat model, security design, vault format, API reference, development guide and per-file code reference. |
 | [`assets/`](assets) | Logo and app icon sources. |
 | [`scripts/check.mjs`](scripts/check.mjs) | The full local check run by `npm run check`. |
 | [`.github/`](.github) | CI workflow (Windows, macOS, Linux), Dependabot, issue and pull request templates. |
@@ -133,6 +133,10 @@ Project documentation lives in [`docs/`](docs/README.md):
 - [API reference](docs/api-reference.md): every Tauri command the UI can call, with arguments, results and error codes.
 - [Development guide](docs/development.md): per-OS setup, commands, project layout and troubleshooting.
 - [Clipboard behaviour](docs/clipboard.md): how copy and auto-clear work on Windows, macOS, X11 and Wayland.
+
+### Code reference
+
+Every hand-written source file and significant configuration file has its own reference page under [`docs/code/`](docs/code/README.md), covering its purpose, public API with exact signatures, security notes, dependencies and tests. The [code reference index](docs/code/README.md) groups the pages by layer: core, Tauri shell, UI and configuration.
 
 Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
