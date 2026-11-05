@@ -27,15 +27,20 @@ The goal is a small, auditable password manager whose security model is easy to 
 
 ## Features
 
-Planned for the first release (MVP):
+Every MVP feature is implemented and runs from a source build on Windows, macOS and Linux:
 
-- **Vault lifecycle**: create, unlock and lock a vault with a master password.
-- **Passwords, notes and secrets**: full create, read, update and delete.
-- **Encrypted file attachments**, streamed in authenticated chunks so files of any size work.
-- **Emergency recovery code**: shown once at creation, can be regenerated at any time (invalidating the previous one).
-- **Master password change** without re-encrypting the whole vault.
-- **Auto-lock** on inactivity, system suspend and screen lock.
-- **Clipboard auto-clear** after copying a secret.
+- **Vault lifecycle.** Create, unlock and lock a vault with a master password. New passwords get live strength feedback (zxcvbn) and must be rated at least "Strong".
+- **Emergency recovery code.** Shown once when the vault is created, with a print-only sheet and a retype step to confirm you saved it. It unlocks the vault if you forget the master password, and you can regenerate it in Settings, which invalidates the previous code.
+- **Master password change.** Only the password key slot is re-wrapped, so the vault data is not re-encrypted.
+- **Passwords, notes and secrets.** Create, view, edit and delete them, with a search by title (ignoring case and accents) and a type filter. Secret fields stay hidden until you reveal them, and the UI fetches them from the Rust core only on demand.
+- **Encrypted file attachments.** Files are encrypted as a stream in authenticated 64 KiB chunks, so large files never sit in memory as a whole. You attach, export and remove them through native file dialogs, with a progress bar.
+- **Auto-lock** after inactivity (1 to 60 minutes, default 5), before system suspend and on screen lock.
+- **Clipboard auto-clear.** Copying is handled in Rust, so the value never reaches the UI. The clipboard is cleared after a configurable delay (default 30 seconds), on lock and on exit, and clipboard history and cloud sync are asked to skip the value. See [clipboard behaviour](docs/clipboard.md) for per-OS details.
+- **Light and dark themes**, following the system by default.
+
+Planned:
+
+- [ ] First release with packaged installers.
 
 Explicitly out of scope: cloud sync, browser extension or autofill, mobile apps and multi-user sharing.
 
@@ -86,28 +91,6 @@ npm run check         # full local check: format, lint, test (Rust and UI)
 npm run dev           # start the app in development mode
 npm run build         # build a release bundle
 ```
-
-## Project status and roadmap
-
-NovaVault is **pre-alpha**. Current progress toward the MVP:
-
-- [x] Repository, license and community files
-- [x] Project scaffold: Cargo workspace, Tauri 2 shell (strict CSP, minimal capabilities), React + TypeScript UI, single check command
-- [x] Core crypto primitives: Argon2id key derivation, XChaCha20-Poly1305 encryption, zeroizing key types
-- [x] Core key slots: vault key wrapped under the master password and the recovery code, recovery code generation and parsing, password change and recovery code regeneration
-- [x] Core vault file format: versioned header, key slots, encrypted password, note and secret records, whole-file integrity seal, atomic saves, migration from older format versions
-- [x] Tauri command layer: create, unlock and lock a vault; list, create, update and delete items; change the master password and regenerate the recovery code; configurable auto-lock timeout
-- [x] Create, unlock and lock a vault (UI)
-- [x] Passwords, notes and secrets (UI): list with title search and type filter, create, view, edit and delete; secret fields hidden until revealed
-- [x] Encrypted file attachments: streaming chunked encryption, native file dialogs opened from Rust, attach, export and remove with progress (UI)
-- [x] Emergency recovery code and master password change (UI)
-- [x] Auto-lock on inactivity, suspend and screen lock
-- [x] Copy to clipboard from Rust with configurable auto-clear (also on lock and exit)
-- [x] Public vault format specification (format version 1, pre-release, including attachments)
-- [x] CI builds and tests on Windows, macOS and Linux
-- [ ] First release
-
-See [CHANGELOG.md](CHANGELOG.md) for what has changed so far.
 
 ## Documentation
 
