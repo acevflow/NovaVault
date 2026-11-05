@@ -156,16 +156,25 @@ impl Vault {
         })
     }
 
+    /// Shared opening sequence. `unlock` receives the slot table and the
+    /// slots' associated data ([`Header::slot_ad`]) and returns the vault
+    /// key from whichever slot the caller's secret opens.
     fn open(
         path: &Path,
         unlock: impl FnOnce(&KeySlots, &[u8]) -> Result<SecretKey>,
     ) -> VaultResult<Self> {
         let file = read_bounded(path)?;
+        // Structure first, so a foreign or newer file is reported without
+        // spending an Argon2id derivation on it.
         let parsed = format::parse(&file)?;
+        // A failed unwrap must not reveal whether the secret or the slot was
+        // wrong, so both become `InvalidCredentials`.
         let key = unlock(&parsed.slots, &parsed.header.slot_ad()).map_err(|error| match error {
             CryptoError::Decryption => VaultError::InvalidCredentials,
             other => other.into(),
         })?;
+        // Until the seal is verified, deleted, duplicated or replayed
+        // records are undetected, so nothing is decrypted before this.
         format::verify_seal(&key, &file, parsed.body_len)?;
         let mut vault = Self {
             path: path.to_path_buf(),
@@ -488,8 +497,12 @@ impl Vault {
     /// # Errors
     ///
     /// - [`VaultError::Io`] if the file cannot be written; the previous file
-    ///   is then left intact, and no blob is deleted.
+    ///   is then left intact, and no blob is deleted. One exception: on Unix
+    ///   the directory is synced after the new file is moved into place,
+    ///   and a failure there is also reported as [`VaultError::Io`] although
+    ///   the new file is already in place.
     /// - [`VaultError::InvalidItem`] if the vault exceeds the format's limits.
+    /// - [`VaultError::Crypto`] if sealing fails.
     pub fn save(&mut self) -> VaultResult<()> {
         let mut file = format::encode_body(&self.header, &self.slots, &self.records)?;
         let seal = format::seal(&self.key, &file)?;
@@ -726,14 +739,20 @@ impl Vault {
             || fs::canonicalize(self.attachments_dir()).is_ok_and(|dir| resolved.starts_with(dir))
     }
 
+    /// Binary search for `id`: `Ok(index)` if present, otherwise
+    /// `Err(insertion index)` keeping the records sorted as the format
+    /// requires.
     fn search(&self, id: ItemId) -> core::result::Result<usize, usize> {
         self.records.binary_search_by_key(&id, |record| record.id)
     }
 
+    /// Index of the record of item `id`, or [`VaultError::ItemNotFound`].
     fn position(&self, id: ItemId) -> VaultResult<usize> {
         self.search(id).map_err(|_| VaultError::ItemNotFound)
     }
 
+    /// Encodes and encrypts an item as a record of the current format
+    /// version, bound to this vault, its identifier and its type.
     fn encrypt(
         &self,
         id: ItemId,
@@ -755,6 +774,8 @@ impl Vault {
         Ok(RecordEnvelope { id, kind, sealed })
     }
 
+    /// Decrypts `record` into an [`Item`] whose secret fields wipe
+    /// themselves on drop.
     fn decrypt(&self, record: &RecordEnvelope) -> VaultResult<Item> {
         let payload = self.decrypt_payload(&self.header, record)?;
         Ok(Item::new(
