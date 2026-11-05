@@ -306,37 +306,7 @@ The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error
 
 ### Dependencies
 
-Every cryptography-related crate and why it is used:
-
-| Crate | Purpose | Justification |
-| ----- | ------- | ------------- |
-| [`argon2`](https://crates.io/crates/argon2) | Argon2id | RustCrypto, pure Rust, widely used. Default features are disabled; only `alloc` and `zeroize` (to wipe its internal memory) are enabled. The core calls `hash_password_into` for raw key output and does not use the PHC password-hash string format. |
-| [`chacha20poly1305`](https://crates.io/crates/chacha20poly1305) | XChaCha20-Poly1305 | RustCrypto; its ChaCha20Poly1305 implementation has had an independent security audit (NCC Group). Default features are disabled; only `zeroize` is enabled. |
-| [`getrandom`](https://crates.io/crates/getrandom) | OS CSPRNG | The standard minimal interface to the operating system's random number generator, and the core's only source of randomness: with default features off, `argon2` and `chacha20poly1305` pull in no random number generator of their own. Used directly so random bytes can be written straight into zeroizing buffers. |
-| [`secrecy`](https://crates.io/crates/secrecy) | Secret wrappers | Prevents accidental exposure (no `Debug` leak, explicit `expose_secret`) and zeroizes on drop. |
-| [`zeroize`](https://crates.io/crates/zeroize) | Memory wiping | Clears buffers in a way the compiler cannot optimize away. Also used by `secrecy` and the RustCrypto crates. |
-| [`thiserror`](https://crates.io/crates/thiserror) | Error types | Derive macro only, no runtime code. Not cryptographic; listed for completeness. |
-
-Shell (`src-tauri`) dependencies that handle secrets or OS security events:
-
-| Crate | Purpose | Justification |
-| ----- | ------- | ------------- |
-| [`secrecy`](https://crates.io/crates/secrecy) (`serde` feature) | Secret command arguments | Deserializes passwords, recovery codes and secret fields straight into `SecretString`, so Rust never holds them in a plain `String`. Serialization of secrets stays disabled. |
-| [`zeroize`](https://crates.io/crates/zeroize) (`derive`) | Wiping responses | Item titles, user names and URLs in list and details responses, and values copied to the clipboard, are wiped once used. |
-| [`serde`](https://crates.io/crates/serde) | IPC (de)serialization | Already used by Tauri for every command; no new crate. |
-| [`serde_json`](https://crates.io/crates/serde_json) | Settings file | Reads and writes the non-secret `settings.json`. Already a Tauri dependency; no new crate. |
-| [`tauri-plugin-dialog`](https://crates.io/crates/tauri-plugin-dialog) | Native open and save dialogs for attachments | The official Tauri plugin (Apache-2.0 OR MIT), built on `rfd`, which uses the system dialogs on Windows, macOS and Linux (GTK). Called only from Rust: the plugin's own webview commands are not granted, so the UI cannot open dialogs or learn paths. It pulls in `tauri-plugin-fs` for its path type, whose commands are not granted either. Not cryptographic; listed because it decides which files the shell reads and writes. |
-| [`arboard`](https://crates.io/crates/arboard) | Clipboard copy and clear | Maintained by 1Password for exactly this use; one API for Windows, macOS, X11 and Wayland, including the clipboard-history opt-outs (Windows history and cloud formats, macOS `ConcealedType`, KDE password hint). Default features are off (no image support). The `wayland-data-control` feature adds the pure-Rust `wl-clipboard-rs` so the clipboard works natively on Wayland; without it only XWayland would work. Doing the copy in Rust is what keeps copied values out of the webview. |
-| [`windows`](https://crates.io/crates/windows) (Windows only) | Suspend and screen-lock events | Microsoft's official Win32 bindings, same version Tauri already uses. Only the window, library loader and remote desktop session APIs are enabled. |
-| [`objc2-app-kit`](https://crates.io/crates/objc2-app-kit), [`objc2-foundation`](https://crates.io/crates/objc2-foundation), [`block2`](https://crates.io/crates/block2) (macOS only) | Sleep and screen-lock notifications | The Objective-C bindings Tauri itself uses, same versions; only `NSWorkspace` and the notification center APIs are enabled. |
-| [`zbus`](https://crates.io/crates/zbus), [`futures-util`](https://crates.io/crates/futures-util) (Linux only) | logind and screen saver D-Bus signals | Pure-Rust D-Bus with no C library, run on Tauri's Tokio runtime (no extra executor, default features off). `futures-util` is already a Tauri dependency. Talks only to local system and session buses, never the network. |
-
-UI (`ui/`) runtime dependencies. None of them implements cryptography; they are listed because they handle secrets typed by the user:
-
-| Package | Purpose | Justification |
-| ------- | ------- | ------------- |
-| [`@tauri-apps/api`](https://www.npmjs.com/package/@tauri-apps/api) | IPC | The official Tauri client: `invoke` calls the shell's commands (the global Tauri API is disabled), and `mockIPC` fakes the shell in component tests. |
-| [`@zxcvbn-ts/core`](https://www.npmjs.com/package/@zxcvbn-ts/core), [`@zxcvbn-ts/language-common`](https://www.npmjs.com/package/@zxcvbn-ts/language-common), [`@zxcvbn-ts/language-en`](https://www.npmjs.com/package/@zxcvbn-ts/language-en) | Master password strength feedback | Maintained TypeScript port of Dropbox's zxcvbn: estimates guesses from dictionaries, common passwords, keyboard patterns and dates, which a length-and-classes heuristic cannot. Runs entirely in the webview with no network access, on a password the UI already holds while the user types it. Loaded lazily so the dictionaries do not slow startup. |
+Every cryptography-related dependency, with its locked version and the reason it was chosen, is listed in [dependencies.md](dependencies.md). Key handling, memory handling, auto-lock and per-OS behaviour are described in the [security design](security-design.md).
 
 ### Test vectors
 
@@ -349,6 +319,8 @@ UI (`ui/`) runtime dependencies. None of them implements cryptography; they are 
 ## Related documents
 
 - [Threat model](threat-model.md)
+- [Security design](security-design.md)
+- [Cryptography dependencies](dependencies.md)
 - [Vault format specification](vault-format.md)
 - [Development guide](development.md)
 - [Clipboard behaviour](clipboard.md)

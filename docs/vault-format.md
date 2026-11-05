@@ -41,7 +41,7 @@ Design goals:
 | Vault key | 256-bit random key | Generated once at vault creation. |
 | Randomness | OS CSPRNG | Used for the vault key, vault, record and attachment identifiers, salts, nonces and the recovery code. |
 
-No custom primitives are used. Crate choices and their justification are documented in [architecture.md](architecture.md#dependencies).
+No custom primitives are used. Crate choices and their justification are documented in [dependencies.md](dependencies.md).
 
 A **sealed message** is the output of one XChaCha20-Poly1305 encryption with a fresh random nonce, stored as `nonce (24) || ciphertext || tag (16)`. It is `len(plaintext) + 40` bytes long. `Seal(key, plaintext, ad)` and `Open(key, sealed, ad)` denote encryption and verified decryption.
 
@@ -205,7 +205,7 @@ ad   = header || 0x02 || (body without its first 32 bytes)
 seal = Seal(vault_key, empty plaintext, ad)                    (40 bytes)
 ```
 
-The seal is recomputed on every save. Readers MUST verify it right after unlocking the vault key and MUST NOT return any record from a file whose seal does not verify. Replacing the *whole* file with an older valid version (rollback) is not detected; see the [threat model](threat-model.md#residual-risks). The seal covers attachment metadata (it is inside the records) but not the blob files, which are authenticated chunk by chunk (§9.6).
+The seal is recomputed on every save. Readers MUST verify it right after unlocking the vault key and MUST NOT return any record from a file whose seal does not verify. Replacing the *whole* file with an older valid version (rollback) is not detected; see the [threat model](threat-model.md#cryptography-and-key-management). The seal covers attachment metadata (it is inside the records) but not the blob files, which are authenticated chunk by chunk (§9.6).
 
 ## 9. Attachments
 
@@ -272,7 +272,7 @@ Any failure is fatal for that attachment and leaves the rest of the vault readab
 
 ### 9.6 Integrity
 
-The vault file's integrity seal (§8) authenticates every attachment's metadata, but not the blob files. A blob is authenticated chunk by chunk and bound to its attachment by `blob_header`, and blobs are immutable (§9.5), so the remaining ways to tamper with blobs are deleting one or replacing it with garbage. Both are detected when the attachment is read (§9.4). The number of blobs, their sizes (from which each file's exact size follows, §9.3) and their file times are visible without the master password; see the [threat model](threat-model.md#residual-risks).
+The vault file's integrity seal (§8) authenticates every attachment's metadata, but not the blob files. A blob is authenticated chunk by chunk and bound to its attachment by `blob_header`, and blobs are immutable (§9.5), so the remaining ways to tamper with blobs are deleting one or replacing it with garbage. Both are detected when the attachment is read (§9.4). The number of blobs, their sizes (from which each file's exact size follows, §9.3) and their file times are visible without the master password; see the [threat model](threat-model.md#files-and-storage).
 
 ## 10. Recovery code
 

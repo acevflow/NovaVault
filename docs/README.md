@@ -3,17 +3,19 @@
 Design and contributor documentation for NovaVault. Start with the architecture, then the threat model; the vault format specification is the reference for anything stored on disk.
 
 > [!NOTE]
-> NovaVault is pre-alpha. These documents describe the intended design and are updated together with the code.
+> NovaVault is pre-alpha. These documents describe the implemented code and are updated together with it.
 
 | Document | What it covers |
 | -------- | -------------- |
 | [Architecture](architecture.md) | Components, layers, trust boundary, data flows and why all cryptography lives in Rust. |
-| [Threat model](threat-model.md) | Assets, adversaries, in-scope and out-of-scope threats, mitigations and residual risks. |
+| [Threat model](threat-model.md) | Assets, adversaries, implemented mitigations, out-of-scope threats, and known limitations and gaps. |
+| [Security design](security-design.md) | Key hierarchy, recovery code flow, memory handling, auto-lock and clipboard behaviour, with per-OS notes. |
+| [Cryptography dependencies](dependencies.md) | Every cryptography-related dependency with its locked version and the reason it was chosen. |
 | [Vault format specification](vault-format.md) | Versioned on-disk format: header, key slots, encrypted records, integrity seal, encrypted attachment blobs, migration, reader rules and test vectors. Format version 1, pre-release. |
 | [Development guide](development.md) | Setup on Windows, macOS and Linux, commands and project layout. |
 | [Clipboard behaviour](clipboard.md) | How copy and auto-clear work, and what happens on Windows, macOS, X11 and Wayland. |
 
-Cryptography and dependencies (algorithms, parameters and the justification for every cryptography-related crate) are covered in [Architecture: Cryptography and dependencies](architecture.md#cryptography-and-dependencies).
+Algorithms and parameters are covered in [Architecture: Cryptography and dependencies](architecture.md#cryptography-and-dependencies); the justification for every cryptography-related crate is in [dependencies.md](dependencies.md).
 
 Related project files:
 
