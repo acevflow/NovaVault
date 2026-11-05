@@ -25,7 +25,8 @@ export interface RecoveryCodeFlowProps {
  * The code exists only in the parent's state and in this component's
  * output; the parent drops it when {@link RecoveryCodeFlowProps.onDone}
  * runs. There is deliberately no copy button: the clipboard is shared with
- * every other app, and clipboard auto-clear is not available yet.
+ * every other app, and the shell's auto-clearing copy only reads item
+ * fields from the vault, so a copied code would stay there indefinitely.
  */
 export function RecoveryCodeFlow({
   code,
