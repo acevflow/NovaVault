@@ -77,7 +77,9 @@ const CHUNK_CONTEXT: u8 = 0x03;
 /// belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BlobHeader {
+    /// The owning vault, so a blob cannot be copied into another vault.
     pub(crate) vault_id: VaultId,
+    /// The attachment, so blobs cannot be swapped within one vault.
     pub(crate) attachment_id: AttachmentId,
 }
 
@@ -123,7 +125,9 @@ impl BlobHeader {
     }
 }
 
-/// Associated data of chunk `index` of the blob with `header`.
+/// Associated data of chunk `index` of the blob with `header`:
+/// `header ‖ 0x03 ‖ index u64 ‖ is_final u8`. The index and the final flag
+/// are what make reordering and truncation detectable.
 fn chunk_ad(header: &[u8; BLOB_HEADER_LEN], index: u64, is_final: bool) -> Vec<u8> {
     let mut ad = Vec::with_capacity(BLOB_HEADER_LEN + 1 + 8 + 1);
     ad.extend_from_slice(header);
@@ -277,10 +281,12 @@ fn read_full(source: &mut impl Read, buffer: &mut [u8]) -> io::Result<usize> {
     Ok(filled)
 }
 
+/// Shorthand for [`VaultError::Corrupted`] with a static `reason`.
 const fn corrupted(reason: &'static str) -> VaultError {
     VaultError::Corrupted { reason }
 }
 
+/// The error for a byte or chunk count that would overflow `u64`.
 const fn too_large() -> VaultError {
     VaultError::InvalidItem {
         reason: "attachment is too large",
@@ -297,7 +303,9 @@ pub const fn blob_len(len: u64) -> u64 {
     BLOB_HEADER_LEN as u64 + len + chunks * OVERHEAD as u64
 }
 
-// Keep the documented header layout and the identifier length in step.
+// Keep the documented header layout and the identifier length in step:
+// a 16-byte fixed prefix (magic, version, algorithm, reserved), then the
+// 16-byte vault identifier, then the attachment identifier.
 const _: () = assert!(BLOB_HEADER_LEN == 16 + 16 + ATTACHMENT_ID_LEN);
 
 #[cfg(test)]

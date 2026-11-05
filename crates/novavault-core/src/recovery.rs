@@ -9,7 +9,7 @@
 //!   they are easily confused with each other.
 //! - **Entropy:** 30 random symbols of 5 bits each, 150 bits in total.
 //! - **Checksum:** 2 extra symbols that catch typos before the slow key
-//!   derivation runs (see the vault format specification, §9).
+//!   derivation runs (see the vault format specification, §10).
 //! - **Display:** the 32 symbols in 8 groups of 4 separated by dashes, for
 //!   example `ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789`.
 //!
@@ -79,6 +79,8 @@ impl RecoveryCode {
     /// Parses a recovery code typed by the user.
     ///
     /// Letters may be in either case; dashes and whitespace are ignored.
+    /// Every check here is cheap and runs before any key derivation, so a
+    /// mistyped code is reported immediately instead of after Argon2id.
     ///
     /// # Errors
     ///
@@ -121,6 +123,12 @@ impl RecoveryCode {
 
     /// Returns the code in its display form, 8 dash-separated groups of 4
     /// symbols, for showing to the user once.
+    ///
+    /// # Security
+    ///
+    /// The returned [`SecretString`] is wiped when dropped, but any copy the
+    /// caller makes (for example to send it to the UI) is not. Show it,
+    /// then drop every copy as soon as the user has confirmed saving it.
     pub fn to_display(&self) -> SecretString {
         let mut text = String::with_capacity(DISPLAY_LEN);
         for (index, &symbol) in self.canonical.expose_secret().iter().enumerate() {
@@ -134,7 +142,9 @@ impl RecoveryCode {
         SecretString::from(text)
     }
 
-    /// The canonical code bytes used as key derivation input.
+    /// The canonical code bytes used as key derivation input. Crate-internal
+    /// so the code's text only leaves the crate through
+    /// [`RecoveryCode::to_display`].
     pub(crate) fn kdf_input(&self) -> &SecretSlice<u8> {
         &self.canonical
     }

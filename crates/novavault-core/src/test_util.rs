@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 pub(crate) struct TempDir(PathBuf);
 
 impl TempDir {
+    /// Creates the directory. Panics on failure, which is fine in tests.
     pub(crate) fn new() -> Self {
         let mut random = [0u8; 8];
         getrandom::fill(&mut random).unwrap();
@@ -16,6 +17,7 @@ impl TempDir {
         Self(path)
     }
 
+    /// The directory's path.
     pub(crate) fn path(&self) -> &Path {
         &self.0
     }

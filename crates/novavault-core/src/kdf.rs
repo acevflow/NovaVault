@@ -52,12 +52,18 @@ impl KdfParams {
     /// Maximum accepted parallelism.
     pub const MAX_PARALLELISM: u32 = 16;
 
-    /// Creates validated parameters.
+    /// Creates validated parameters from a memory cost in KiB, a time cost
+    /// (passes over memory) and a degree of parallelism (lanes).
+    ///
+    /// Use this for every value read from a vault file: it is what stops a
+    /// tampered file from weakening or inflating key derivation.
     ///
     /// # Errors
     ///
     /// Returns [`CryptoError::InvalidKdfParams`] if any value is outside the
-    /// `MIN_*`..=`MAX_*` bounds above.
+    /// bounds [`MIN_MEMORY_KIB`](Self::MIN_MEMORY_KIB)..=[`MAX_MEMORY_KIB`](Self::MAX_MEMORY_KIB),
+    /// [`MIN_ITERATIONS`](Self::MIN_ITERATIONS)..=[`MAX_ITERATIONS`](Self::MAX_ITERATIONS) or
+    /// [`MIN_PARALLELISM`](Self::MIN_PARALLELISM)..=[`MAX_PARALLELISM`](Self::MAX_PARALLELISM).
     pub const fn new(memory_kib: u32, iterations: u32, parallelism: u32) -> Result<Self> {
         let params = Self {
             memory_kib,
@@ -112,6 +118,10 @@ impl KdfParams {
 }
 
 impl Default for KdfParams {
+    /// The recommended parameters for new key slots:
+    /// [`DEFAULT_MEMORY_KIB`](Self::DEFAULT_MEMORY_KIB),
+    /// [`DEFAULT_ITERATIONS`](Self::DEFAULT_ITERATIONS) and
+    /// [`DEFAULT_PARALLELISM`](Self::DEFAULT_PARALLELISM).
     fn default() -> Self {
         Self {
             memory_kib: Self::DEFAULT_MEMORY_KIB,
@@ -125,6 +135,13 @@ impl Default for KdfParams {
 ///
 /// The output is written directly into zeroizing storage. The same inputs
 /// always produce the same key; use a fresh [`Salt`] for every new key slot.
+///
+/// # Security
+///
+/// `password` is used byte for byte: no Unicode normalization or trimming
+/// is applied, so the UI must pass the exact bytes the user will type again
+/// later. This runs for well under a second with the default parameters but
+/// is deliberately slow; never call it on a UI thread.
 ///
 /// # Errors
 ///

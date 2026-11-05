@@ -237,6 +237,12 @@ pub(crate) fn parse(file: &[u8]) -> VaultResult<VaultFile> {
     })
 }
 
+/// Parses one serialized key slot, reporting any problem as file corruption.
+///
+/// A slot read from disk that fails strict parsing means the file is
+/// damaged or crafted, so it becomes [`VaultError::Corrupted`]. Out-of-bounds
+/// KDF parameters get their own reason because they are the likely sign of a
+/// downgrade or resource-exhaustion attempt.
 fn parse_slot(bytes: &[u8]) -> VaultResult<KeySlot> {
     KeySlot::from_bytes(bytes).map_err(|error| match error {
         CryptoError::InvalidKdfParams { .. } => {
@@ -246,16 +252,20 @@ fn parse_slot(bytes: &[u8]) -> VaultResult<KeySlot> {
     })
 }
 
+/// Shorthand for [`VaultError::Corrupted`] with a static `reason`.
 const fn corrupted(reason: &'static str) -> VaultError {
     VaultError::Corrupted { reason }
 }
 
-/// Bounds-checked cursor over the file.
+/// Bounds-checked cursor over the file. Every read fails with
+/// [`VaultError::Corrupted`] instead of panicking when the file is short.
 struct Reader<'a> {
+    /// The bytes not read yet.
     rest: &'a [u8],
 }
 
 impl<'a> Reader<'a> {
+    /// Consumes and returns the next `len` bytes.
     fn take(&mut self, len: usize) -> VaultResult<&'a [u8]> {
         let (head, rest) = self
             .rest
@@ -265,16 +275,19 @@ impl<'a> Reader<'a> {
         Ok(head)
     }
 
+    /// Consumes the next `N` bytes as an array.
     fn array<const N: usize>(&mut self) -> VaultResult<[u8; N]> {
         self.take(N)?
             .try_into()
             .map_err(|_| corrupted("unexpected end of file"))
     }
 
+    /// Consumes one byte.
     fn u8(&mut self) -> VaultResult<u8> {
         self.array::<1>().map(|[byte]| byte)
     }
 
+    /// Consumes a little-endian `u32`.
     fn u32(&mut self) -> VaultResult<u32> {
         self.array().map(u32::from_le_bytes)
     }

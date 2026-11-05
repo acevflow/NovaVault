@@ -520,6 +520,10 @@ const ATTACHMENT_FIXED_LEN: usize = ATTACHMENT_ID_LEN + 8 + 8;
 /// Encodes an item's payload (timestamps, fields and, from format version
 /// 1, attachments) for format `version`, padded to [`PAD_BLOCK`].
 ///
+/// `version` is the vault's format version; it decides whether the
+/// attachment section is written. The result is plaintext and is returned
+/// in a [`Zeroizing`] buffer that the caller encrypts and then drops.
+///
 /// # Errors
 ///
 /// Returns [`VaultError::InvalidItem`] if the padded payload would exceed
@@ -597,6 +601,9 @@ pub(crate) fn encode_payload(
 /// Decodes a payload produced by [`encode_payload`] for an item of `kind`
 /// in format `version`.
 ///
+/// `kind` comes from the record's plaintext type byte, which is safe to
+/// trust here because it is part of the record's authenticated data.
+///
 /// # Errors
 ///
 /// Returns [`VaultError::Corrupted`] if the payload is truncated, has a
@@ -640,14 +647,18 @@ pub(crate) fn decode_payload(version: u16, kind: ItemKind, payload: &[u8]) -> Va
     })
 }
 
-/// Bounds-checked cursor over a payload.
+/// Bounds-checked cursor over a payload; holds the bytes not read yet.
 struct Reader<'a>(&'a [u8]);
 
 impl Reader<'_> {
+    /// The single error for any payload problem. The payload has already
+    /// been authenticated, so a decoding failure means a writer bug, not an
+    /// attack, and one reason is enough.
     const MALFORMED: VaultError = VaultError::Corrupted {
         reason: "malformed record payload",
     };
 
+    /// Consumes and returns the next `len` bytes.
     fn take(&mut self, len: usize) -> VaultResult<&[u8]> {
         if len > self.0.len() {
             return Err(Self::MALFORMED);
@@ -657,18 +668,23 @@ impl Reader<'_> {
         Ok(head)
     }
 
+    /// Consumes the next `N` bytes as an array.
     fn array<const N: usize>(&mut self) -> VaultResult<[u8; N]> {
         self.take(N)?.try_into().map_err(|_| Self::MALFORMED)
     }
 
+    /// Consumes a little-endian `u64`.
     fn u64(&mut self) -> VaultResult<u64> {
         self.array().map(u64::from_le_bytes)
     }
 
+    /// Consumes a little-endian `u32`.
     fn u32(&mut self) -> VaultResult<u32> {
         self.array().map(u32::from_le_bytes)
     }
 
+    /// Consumes the attachment section: a count, then that many entries,
+    /// each with a valid name and an identifier not seen before.
     fn attachments(&mut self) -> VaultResult<Vec<Attachment>> {
         let count = usize::try_from(self.u32()?).map_err(|_| Self::MALFORMED)?;
         if count > MAX_ATTACHMENTS_PER_ITEM {
@@ -691,19 +707,24 @@ impl Reader<'_> {
         Ok(attachments)
     }
 
+    /// Consumes a length-prefixed string, borrowed from the payload.
     fn str(&mut self) -> VaultResult<&str> {
         let len = self.take(4)?;
         let len: [u8; 4] = len.try_into().map_err(|_| Self::MALFORMED)?;
         let len = usize::try_from(u32::from_le_bytes(len)).map_err(|_| Self::MALFORMED)?;
-        // Validating in place, then copying once into an exactly sized
-        // allocation, leaves no stray plaintext copy behind on error.
+        // Validated in place and borrowed: `string` and `secret` then copy
+        // once into an exactly sized allocation, so no stray plaintext copy
+        // is left behind, even on error.
         core::str::from_utf8(self.take(len)?).map_err(|_| Self::MALFORMED)
     }
 
+    /// Consumes a plain string field; it is wiped on drop once it is part
+    /// of an item or attachment.
     fn string(&mut self) -> VaultResult<String> {
         self.str().map(str::to_owned)
     }
 
+    /// Consumes a string field that usually holds a secret.
     fn secret(&mut self) -> VaultResult<SecretString> {
         self.str().map(SecretString::from)
     }
