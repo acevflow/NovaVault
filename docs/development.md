@@ -114,16 +114,16 @@ Run it before every push. CI ([`.github/workflows/ci.yml`](../.github/workflows/
 Cargo.toml               Rust workspace (shared lints and package metadata)
 package.json             Tauri CLI and the root scripts (check, dev, build)
 scripts/check.mjs        full local check
-crates/novavault-core/   Rust library: crypto, vault format, key slots (UI-independent)
+crates/novavault-core/   Rust library: crypto, vault format, key slots, attachments (UI-independent)
 src-tauri/               thin Tauri 2 shell: commands, OS hooks, CSP, capabilities
 ui/                      React + TypeScript front end (Vite, ESLint, Prettier, Vitest)
   src/api/               typed wrappers over the Tauri commands, error codes
   src/app/               router and app shell
-  src/screens/           create, unlock and settings screens; items/ (list, details, form)
+  src/screens/           create, unlock and settings screens; items/ (list, details, attachments, form)
   src/recovery/          one-time recovery code display, print and confirmation
   src/password/          password strength (zxcvbn) and new-password fields
   src/components/        accessible base components, secret field and copy button
-  src/format/            text formatting helpers
+  src/format/            text formatting helpers (durations, dates, sizes)
   src/theme/             light and dark themes
   src/test/              test setup and the mockIPC helper that fakes the shell
 docs/                    architecture, threat model, vault format, clipboard, this guide

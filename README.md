@@ -31,7 +31,7 @@ Planned for the first release (MVP):
 
 - **Vault lifecycle**: create, unlock and lock a vault with a master password.
 - **Passwords, notes and secrets**: full create, read, update and delete.
-- **Encrypted file attachments** stored inside the vault.
+- **Encrypted file attachments**, streamed in authenticated chunks so files of any size work.
 - **Emergency recovery code**: shown once at creation, can be regenerated at any time (invalidating the previous one).
 - **Master password change** without re-encrypting the whole vault.
 - **Auto-lock** on inactivity, system suspend and screen lock.
@@ -95,15 +95,15 @@ NovaVault is **pre-alpha**. Current progress toward the MVP:
 - [x] Project scaffold: Cargo workspace, Tauri 2 shell (strict CSP, minimal capabilities), React + TypeScript UI, single check command
 - [x] Core crypto primitives: Argon2id key derivation, XChaCha20-Poly1305 encryption, zeroizing key types
 - [x] Core key slots: vault key wrapped under the master password and the recovery code, recovery code generation and parsing, password change and recovery code regeneration
-- [x] Core vault file format: versioned header, key slots, encrypted password, note and secret records, whole-file integrity seal, atomic saves (attachments come with the attachments feature below)
+- [x] Core vault file format: versioned header, key slots, encrypted password, note and secret records, whole-file integrity seal, atomic saves, migration from older format versions
 - [x] Tauri command layer: create, unlock and lock a vault; list, create, update and delete items; change the master password and regenerate the recovery code; configurable auto-lock timeout
 - [x] Create, unlock and lock a vault (UI)
 - [x] Passwords, notes and secrets (UI): list with title search and type filter, create, view, edit and delete; secret fields hidden until revealed
-- [ ] Encrypted file attachments
+- [x] Encrypted file attachments: streaming chunked encryption, native file dialogs opened from Rust, attach, export and remove with progress (UI)
 - [x] Emergency recovery code and master password change (UI)
 - [x] Auto-lock on inactivity, suspend and screen lock
 - [x] Copy to clipboard from Rust with configurable auto-clear (also on lock and exit)
-- [x] Public vault format specification (format version 0, pre-release; attachments to be specified)
+- [x] Public vault format specification (format version 1, pre-release, including attachments)
 - [x] CI builds and tests on Windows, macOS and Linux
 - [ ] First release
 
