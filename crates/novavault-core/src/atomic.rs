@@ -19,8 +19,9 @@ use std::path::{Path, PathBuf};
 /// # Errors
 ///
 /// Any I/O error while creating, writing, flushing or renaming the
-/// temporary file. The temporary file is removed on failure and the
-/// existing file at `path`, if any, is left untouched.
+/// temporary file; the temporary file is then removed and the existing
+/// file at `path`, if any, is left untouched. See [`AtomicFile::commit`]
+/// for the one error reported after `path` was already replaced.
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut file = AtomicFile::create(path)?;
     file.write_all(bytes)?;
@@ -39,8 +40,11 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
 pub(crate) struct AtomicFile {
     /// The open temporary file; `None` once committed.
     file: Option<File>,
+    /// Path of the temporary file: `.<target name>.<16 hex digits>.tmp`.
     temp: PathBuf,
+    /// The path the contents are moved to on commit.
     target: PathBuf,
+    /// The directory holding both, synced after the rename on Unix.
     dir: PathBuf,
 }
 
@@ -93,8 +97,11 @@ impl AtomicFile {
     ///
     /// # Errors
     ///
-    /// Any I/O error while flushing or renaming. The temporary file is then
-    /// removed and the target path is left untouched.
+    /// - Any I/O error while flushing or renaming. The temporary file is
+    ///   then removed and the target path is left untouched.
+    /// - On Unix, an I/O error while syncing the directory after the rename.
+    ///   The target path then already holds the new contents; only the
+    ///   durability of the rename across a crash is in doubt.
     pub(crate) fn commit(mut self) -> io::Result<()> {
         let file = self.file.take().ok_or_else(closed)?;
         // Flush the data before the rename makes it visible under the real
@@ -133,6 +140,7 @@ impl Drop for AtomicFile {
     }
 }
 
+/// The error for using an `AtomicFile` after it was committed.
 fn closed() -> io::Error {
     io::Error::other("file already committed")
 }
@@ -144,6 +152,8 @@ fn sync_dir(dir: &Path) -> io::Result<()> {
     fs::File::open(dir)?.sync_all()
 }
 
+/// No-op elsewhere: the standard library cannot open a directory for
+/// syncing on Windows.
 #[cfg(not(unix))]
 fn sync_dir(_dir: &Path) -> io::Result<()> {
     Ok(())
