@@ -58,6 +58,26 @@ export interface ItemSummary {
   readonly updatedAtMs: number;
 }
 
+/** One file attached to an item. The file's contents never reach the UI. */
+export interface Attachment {
+  /** Attachment identifier, 32 lower-case hexadecimal digits. */
+  readonly id: string;
+  /** The original file name. */
+  readonly name: string;
+  /** Size in bytes. */
+  readonly size: number;
+  /** When the file was attached, milliseconds since the Unix epoch (UTC). */
+  readonly addedAtMs: number;
+}
+
+/** Progress of an attachment being added or exported. */
+export interface TransferProgress {
+  /** Bytes encrypted or decrypted so far. */
+  readonly done: number;
+  /** Bytes in total. */
+  readonly total: number;
+}
+
 /** Fields every item's details share. */
 interface ItemDetailsBase {
   /** Item identifier. */
@@ -68,6 +88,8 @@ interface ItemDetailsBase {
   readonly createdAtMs: number;
   /** Last update time, milliseconds since the Unix epoch (UTC). */
   readonly updatedAtMs: number;
+  /** The item's attachments, in the order they were added. */
+  readonly attachments: readonly Attachment[];
 }
 
 /**
