@@ -165,12 +165,16 @@ impl Header {
         self.vault_id
     }
 
-    /// The algorithm used for every ciphertext in the file.
+    /// The algorithm used for every ciphertext in the file. Constant, since
+    /// [`AeadId::XChaCha20Poly1305`] is the only algorithm the supported
+    /// format versions define; [`Header::parse`] rejects any other.
     pub const fn aead(&self) -> AeadId {
         AeadId::XChaCha20Poly1305
     }
 
-    /// Encodes the header to its [`HEADER_LEN`]-byte form.
+    /// Encodes the header to its [`HEADER_LEN`]-byte form, with
+    /// [`SLOT_COUNT`] slots and zero flags and reserved bytes. These are the
+    /// bytes records and the integrity seal authenticate.
     pub fn to_bytes(&self) -> [u8; HEADER_LEN] {
         let mut bytes = [0u8; HEADER_LEN];
         bytes[..MAGIC.len()].copy_from_slice(&MAGIC);
@@ -201,7 +205,11 @@ impl Header {
     /// Parses the header at the start of `file`.
     ///
     /// `file` may be longer than [`HEADER_LEN`]; only the header bytes are
-    /// read.
+    /// read. The returned header keeps the file's version, which may be
+    /// older than [`FORMAT_VERSION`]; the vault migrates such files.
+    ///
+    /// Nothing here is authenticated yet: the header only becomes trusted
+    /// once the integrity seal has been verified with the vault key.
     ///
     /// # Errors
     ///
