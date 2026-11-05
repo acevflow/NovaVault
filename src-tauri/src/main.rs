@@ -48,6 +48,10 @@ use crate::session::Session;
 /// compromised webview cannot point the app at arbitrary files.
 const VAULT_FILE_NAME: &str = "vault.nvault";
 
+/// Builds and runs the app, and clears the clipboard on exit.
+///
+/// Returns a failure exit code if Tauri cannot start; nothing is open or
+/// copied at that point.
 fn main() -> ExitCode {
     let built = tauri::Builder::default()
         // Native file dialogs for attachments. The plugin is used from Rust
@@ -56,6 +60,8 @@ fn main() -> ExitCode {
         .setup(|app| {
             let path = app.path().app_data_dir()?.join(VAULT_FILE_NAME);
             let session = Session::new(path, KdfParams::default(), Instant::now());
+            // Both states are managed before the idle timer and the OS
+            // monitor start, because their lock path reads them.
             app.manage(AppState::new(session));
             app.manage(ClipboardManager::start(SystemClipboard::open));
             autolock::start_idle_timer(app.handle().clone());
