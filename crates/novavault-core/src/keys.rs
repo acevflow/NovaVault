@@ -39,12 +39,17 @@ impl SecretKey {
         Ok(Self(key))
     }
 
-    /// Builds a key from raw bytes, taking ownership of them.
+    /// Builds a key from raw bytes, copying them into zeroizing storage.
     ///
-    /// The caller's array is moved into zeroizing storage; callers should not
-    /// keep other copies of the bytes.
+    /// # Security
+    ///
+    /// `[u8; KEY_LEN]` is `Copy`, so passing it by value copies it: the
+    /// caller's own array is not wiped by this call. Callers that hold key
+    /// bytes outside a zeroizing type must wipe them themselves, which is why
+    /// the crate's own producers use zeroizing buffers instead.
     pub fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
-        // Wrap the moved-in array so this copy is wiped once it is boxed.
+        // Wrap the parameter so this function's copy is wiped once it has
+        // been copied into the box.
         let bytes = Zeroizing::new(bytes);
         Self(SecretBox::init_with_mut(|key: &mut [u8; KEY_LEN]| {
             key.copy_from_slice(bytes.as_slice());
@@ -114,6 +119,8 @@ impl Salt {
     }
 }
 
+// Unlike `SecretKey`, a salt is printed in full: it is stored in clear in
+// the vault file, and seeing it helps when debugging the format.
 impl core::fmt::Debug for Salt {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Salt(")?;
