@@ -17,11 +17,11 @@
 ---
 
 > [!WARNING]
-> NovaVault is in early development and is **not ready for real secrets**. There is no released build yet, and the vault format may change without notice until version 1.0.
+> NovaVault is pre-alpha and **not ready for real secrets**. It has not been independently audited, there is no released build yet (you have to build it from source), and the vault format may change until version 1.0.
 
 ## Overview
 
-NovaVault is a desktop application that keeps your sensitive data in a single encrypted vault file on your own machine. It has no server, no account, no sync service and no telemetry: core features never touch the network. Everything is protected by a master password, with an emergency recovery code as a second way in.
+NovaVault is a desktop application that keeps your sensitive data in one encrypted vault on your own machine. It has no server, no account, no sync service and no telemetry, and core features never touch the network. A master password protects the vault, and an emergency recovery code gives you a second way in.
 
 The goal is a small, auditable password manager whose security model is easy to explain and whose storage format is publicly documented.
 
