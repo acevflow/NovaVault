@@ -36,6 +36,11 @@
 //!   random nonce per message.
 //! - [`keys`]: the zeroizing [`SecretKey`] type and [`Salt`].
 //! - [`error`]: the typed [`CryptoError`] and [`VaultError`].
+//!
+//! Two private modules complete the picture for reviewers: `format` frames
+//! the vault file's bytes and computes its integrity seal, and `atomic`
+//! replaces files through a flushed temporary file so a crash never leaves
+//! a half-written vault or export.
 
 // No unsafe code in the trusted core, ever.
 #![forbid(unsafe_code)]
