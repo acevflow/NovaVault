@@ -50,6 +50,9 @@ const VAULT_FILE_NAME: &str = "vault.nvault";
 
 fn main() -> ExitCode {
     let built = tauri::Builder::default()
+        // Native file dialogs for attachments. The plugin is used from Rust
+        // only: the capability grants the webview none of its commands.
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let path = app.path().app_data_dir()?.join(VAULT_FILE_NAME);
             let session = Session::new(path, KdfParams::default(), Instant::now());
@@ -78,6 +81,9 @@ fn main() -> ExitCode {
             commands::create_item,
             commands::update_item,
             commands::delete_item,
+            commands::add_attachment,
+            commands::export_attachment,
+            commands::delete_attachment,
         ])
         .build(tauri::generate_context!());
     let app = match built {
@@ -139,7 +145,7 @@ mod tests {
             .collect();
         granted.sort();
 
-        assert_eq!(declared.len(), 16);
+        assert_eq!(declared.len(), 19);
         assert_eq!(granted, declared);
     }
 }

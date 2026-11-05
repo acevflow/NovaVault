@@ -18,6 +18,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::clipboard::ClipboardManager;
 use crate::commands::AppState;
+use crate::session::Session;
 
 /// How often the idle timer is checked; bounds how late the lock can be.
 const CHECK_INTERVAL: Duration = Duration::from_secs(5);
@@ -47,14 +48,20 @@ impl LockReason {
 /// Locks the vault for `reason` and, if it was unlocked, resets the UI.
 ///
 /// For [`LockReason::Inactivity`] the session locks only if it has really
-/// been idle for the configured timeout; OS events lock unconditionally.
+/// been idle for the configured timeout; OS events lock unconditionally,
+/// and stop a running attachment transfer first so the lock is not
+/// delayed by it. Inactivity never stops a transfer: a transfer in
+/// progress is activity, and the session is not idle until it ends.
 pub fn lock_and_reset_ui(app: &AppHandle, reason: LockReason) {
-    let locked = app
-        .state::<AppState>()
-        .with_session(|session| match reason {
-            LockReason::Inactivity => session.lock_if_idle(Instant::now()),
-            LockReason::Suspend | LockReason::ScreenLock => session.lock(),
-        });
+    let state = app.state::<AppState>();
+    let locked = match reason {
+        LockReason::Inactivity => {
+            state.with_session(|session| session.lock_if_idle(Instant::now()))
+        }
+        LockReason::Suspend | LockReason::ScreenLock => {
+            state.with_session_interrupting_transfers(Session::lock)
+        }
+    };
     if !locked {
         return;
     }

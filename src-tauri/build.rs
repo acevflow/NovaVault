@@ -24,6 +24,9 @@ const COMMANDS: &[&str] = &[
     "create_item",
     "update_item",
     "delete_item",
+    "add_attachment",
+    "export_attachment",
+    "delete_attachment",
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

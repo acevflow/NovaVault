@@ -46,6 +46,19 @@ pub enum CommandError {
     #[error("item not found")]
     ItemNotFound,
 
+    /// The item has no attachment with the given identifier.
+    #[error("attachment not found")]
+    AttachmentNotFound,
+
+    /// A file the user picked could not be read, or the export destination
+    /// could not be written.
+    #[error("the file could not be read or written")]
+    FileAccess,
+
+    /// An attachment transfer was stopped because the vault was locked.
+    #[error("the operation was cancelled")]
+    Cancelled,
+
     /// The item cannot be stored, for example because it is too large.
     #[error("the item cannot be stored")]
     InvalidItem,
@@ -84,6 +97,9 @@ impl CommandError {
             Self::InvalidRecoveryCode => "invalid_recovery_code",
             Self::InvalidInput => "invalid_input",
             Self::ItemNotFound => "item_not_found",
+            Self::AttachmentNotFound => "attachment_not_found",
+            Self::FileAccess => "file_access",
+            Self::Cancelled => "cancelled",
             Self::InvalidItem => "invalid_item",
             Self::UnsupportedVault => "unsupported_vault",
             Self::Corrupted => "corrupted",
@@ -115,6 +131,8 @@ impl From<VaultError> for CommandError {
             VaultError::ItemNotFound => Self::ItemNotFound,
             VaultError::AlreadyExists => Self::VaultExists,
             VaultError::InvalidItem { .. } => Self::InvalidItem,
+            VaultError::AttachmentNotFound => Self::AttachmentNotFound,
+            VaultError::Cancelled => Self::Cancelled,
             VaultError::Crypto(error) => error.into(),
             // `VaultError` is non-exhaustive; a new variant must not leak
             // its details before it gets a dedicated code.
@@ -145,7 +163,7 @@ pub type CommandResult<T> = Result<T, CommandError>;
 mod tests {
     use super::*;
 
-    const ALL: [CommandError; 13] = [
+    const ALL: [CommandError; 16] = [
         CommandError::Locked,
         CommandError::VaultNotFound,
         CommandError::VaultExists,
@@ -153,6 +171,9 @@ mod tests {
         CommandError::InvalidRecoveryCode,
         CommandError::InvalidInput,
         CommandError::ItemNotFound,
+        CommandError::AttachmentNotFound,
+        CommandError::FileAccess,
+        CommandError::Cancelled,
         CommandError::InvalidItem,
         CommandError::UnsupportedVault,
         CommandError::Corrupted,
@@ -204,6 +225,11 @@ mod tests {
             ),
             (VaultError::AlreadyExists, CommandError::VaultExists),
             (VaultError::ItemNotFound, CommandError::ItemNotFound),
+            (
+                VaultError::AttachmentNotFound,
+                CommandError::AttachmentNotFound,
+            ),
+            (VaultError::Cancelled, CommandError::Cancelled),
             (
                 VaultError::Crypto(CryptoError::Random),
                 CommandError::Internal,
