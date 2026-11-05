@@ -70,26 +70,51 @@ Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it priv
 
 ## Building from source
 
-> [!NOTE]
-> You can create, unlock and lock a vault, and manage passwords, notes and secrets, but NovaVault is not ready for real secrets yet. Per-OS setup is detailed in the [development guide](docs/development.md).
+There is no released build yet. To try NovaVault, build it from source. The [development guide](docs/development.md) has the full per-OS setup, every command and troubleshooting tips.
 
-Prerequisites:
+### Prerequisites
 
-- [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)
-- [Node.js](https://nodejs.org/) (LTS)
-- The [Tauri 2 system prerequisites](https://tauri.app/start/prerequisites/) for your operating system
+All platforms:
 
-Build and run:
+- [Git](https://git-scm.com/)
+- [Rust](https://www.rust-lang.org/tools/install) stable via `rustup`, with `rustfmt` and `clippy`
+- [Node.js](https://nodejs.org/) LTS with `npm`
+
+Plus the [Tauri 2 system prerequisites](https://tauri.app/start/prerequisites/) for your OS:
+
+- **Windows:** [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the *Desktop development with C++* workload, Microsoft Edge WebView2 (preinstalled on Windows 10 1803+ and Windows 11), and the default MSVC Rust toolchain.
+- **macOS:** Xcode Command Line Tools (`xcode-select --install`).
+- **Linux:** WebKitGTK 4.1 and build tools. On Debian or Ubuntu:
+
+  ```sh
+  sudo apt update
+  sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+    libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  ```
+
+  Fedora and Arch Linux packages are listed in the [development guide](docs/development.md#linux).
+
+### Build and run
+
+The commands are the same on every OS and shell:
 
 ```sh
 git clone https://github.com/acevflow/NovaVault.git
 cd NovaVault
 npm ci                # Tauri CLI
 npm ci --prefix ui    # UI dependencies
-npm run check         # full local check: format, lint, test (Rust and UI)
-npm run dev           # start the app in development mode
-npm run build         # build a release bundle
+npm run check         # full local check: format, lint, typecheck, test and build (UI and Rust)
+npm run dev           # run the app in development mode
+npm run build         # build a release bundle for your OS
 ```
+
+The vault (`vault.nvault`), its attachments folder and a non-secret `settings.json` are stored in the app data directory for `io.github.acevflow.novavault`:
+
+| OS | Location |
+| -- | -------- |
+| Windows | `%APPDATA%\io.github.acevflow.novavault\` |
+| macOS | `~/Library/Application Support/io.github.acevflow.novavault/` |
+| Linux | `~/.local/share/io.github.acevflow.novavault/` (or `$XDG_DATA_HOME`) |
 
 ## Documentation
 
