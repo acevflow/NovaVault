@@ -18,7 +18,11 @@ Design and contributor documentation for NovaVault. Start with the architecture,
 
 Algorithms and parameters are covered in [Architecture: Cryptography and dependencies](architecture.md#cryptography-and-dependencies); the justification for every cryptography-related crate is in [dependencies.md](dependencies.md).
 
-Related project files:
+## Code reference
+
+The [code reference](code/README.md) has one page per hand-written source file and significant configuration file, mirroring the source tree. Each page covers the file's purpose, public API with exact signatures, security notes, dependencies, callers and tests. The index groups the pages by layer (core, Tauri shell, UI, configuration); [TEMPLATE.md](code/TEMPLATE.md) defines the page format and what is covered.
+
+## Related project files
 
 - [README](../README.md): overview, features and roadmap.
 - [CONTRIBUTING](../CONTRIBUTING.md): branches, commits, code style and review.
