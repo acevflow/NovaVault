@@ -49,7 +49,7 @@ Each copy carries the `x-kde-passwordManagerHint: secret` MIME type, which KDE K
 - NovaVault uses the **data-control** protocol (`ext-data-control-v1` or the older `wlr-data-control-unstable-v1`) when `WAYLAND_DISPLAY` is set and the compositor supports it. wlroots-based compositors (Sway, Hyprland and others) and KDE Plasma support it; GNOME (Mutter) does not in many releases still in use. With data-control, copying and clearing work immediately, even when NovaVault's window does not have focus.
 - If the compositor has no data-control protocol, NovaVault falls back to the X11 clipboard through **XWayland**. XWayland passes the clipboard between X11 and Wayland apps only when an X11 window has keyboard focus. In that case:
   - a copied value may become available to native Wayland apps only once NovaVault's window has been focused (it normally is, because the user just clicked Copy);
-  - **a timed clear may not reach native Wayland apps until NovaVault's window is focused again.** Until then, they may still be able to paste the old value. This is a known residual risk (see the [threat model](threat-model.md#residual-risks)).
+  - **a timed clear may not reach native Wayland apps until NovaVault's window is focused again.** Until then, they may still be able to paste the old value. This is a known residual risk (see the [threat model](threat-model.md#auto-lock-and-clipboard)).
 - As on X11, the app that copied a value serves it, so a killed NovaVault usually takes the value with it. Clipboard managers that recorded it earlier may still hold it.
 - Flatpak or other sandboxes may block data-control access; NovaVault then uses the XWayland fallback above, or reports `clipboard_unavailable` if neither works.
 
