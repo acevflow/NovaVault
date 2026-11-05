@@ -26,7 +26,8 @@ export function usePasswordStrength(password: string): StrengthEstimate | null {
       })
       .catch(() => {
         // Estimation failed (the dictionaries could not load): no feedback,
-        // and callers keep the submit button disabled.
+        // and `newPasswordProblem` keeps reporting `checking`, so the
+        // password cannot be submitted.
       });
     return () => {
       current = false;
