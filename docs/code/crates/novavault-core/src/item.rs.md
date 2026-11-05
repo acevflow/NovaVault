@@ -73,7 +73,7 @@ Integers are little-endian. A `str` is a `u32` byte length followed by that many
 
 ### Constants
 
-The limits above. `PAD_BLOCK` and `MAX_PAYLOAD_LEN` are also used by [`format`](format.rs.md) to bound `sealed_len`.
+The limits above. [`format`](format.rs.md) also uses `MAX_PAYLOAD_LEN` to bound `sealed_len`.
 
 ### `ItemId` and `AttachmentId`
 
