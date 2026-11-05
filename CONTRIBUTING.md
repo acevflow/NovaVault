@@ -11,13 +11,12 @@ NovaVault is maintained by a single person, so the project deliberately keeps it
 
 - **Report bugs** by opening an issue with steps to reproduce, expected versus actual behavior, your OS and the NovaVault version or commit.
 - **Suggest improvements** by opening an issue first. Features outside the MVP scope (sync, browser extensions, mobile, multi-user sharing) will be declined.
-- **Improve documentation**, including the vault format specification once it exists.
+- **Improve documentation**, including the [vault format specification](docs/vault-format.md).
 - **Submit code** for an open issue. For anything non-trivial, comment on the issue first so the approach can be agreed before you invest time.
 
 ## Development setup
 
-> [!NOTE]
-> **Coming soon.** The application scaffolding has not been committed yet. The prerequisites below are final; the exact commands will be added with the first code drop.
+The [development guide](docs/development.md) has the full per-OS setup, every command and troubleshooting tips.
 
 ### Prerequisites
 
@@ -30,20 +29,28 @@ NovaVault is maintained by a single person, so the project deliberately keeps it
 ```sh
 git clone https://github.com/acevflow/NovaVault.git
 cd NovaVault
+npm ci                # Tauri CLI
+npm ci --prefix ui    # UI dependencies
 ```
 
-### Running the full local check (coming soon)
+### Running the full local check
 
-A single command will run formatting checks, linters and all tests for both the Rust and TypeScript code. Run it before every push; CI runs the same checks on Windows, macOS and Linux.
+```sh
+npm run check
+```
+
+It runs formatting checks, linters, the TypeScript typecheck, all tests and the builds for both the UI and the Rust workspace (see [`scripts/check.mjs`](scripts/check.mjs)). Run it before every push; CI runs the same checks on Windows, macOS and Linux.
 
 ### Repository layout
 
 ```text
-crates/novavault-core/   crypto, vault format, key slots; UI-independent library
+crates/novavault-core/   crypto, vault format, key slots, attachments; UI-independent library
 src-tauri/               thin Tauri layer
 ui/                      React + TypeScript
+scripts/                 the full local check (npm run check)
 docs/                    specifications and design documents
 assets/                  logo and other static assets
+.github/                 CI workflow, Dependabot, issue and pull request templates
 ```
 
 ## Branches
@@ -88,8 +95,8 @@ NovaVault uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.
 
 ### Rust
 
-- Format with `cargo fmt`.
-- Lint with `cargo clippy -- -D warnings` (warnings are errors).
+- Format with `cargo fmt --all`.
+- Lint with `cargo clippy --workspace --all-targets --locked -- -D warnings` (warnings are errors).
 - No `unwrap()` or `expect()` outside of tests. Propagate errors with typed error enums built on `thiserror`.
 - Document public items with `///` and modules or crates with `//!`.
 
@@ -124,7 +131,7 @@ By submitting a contribution, you agree that it is licensed under the project's 
 Changes to cryptography, key handling, the vault format, the Tauri command surface or memory handling receive extra scrutiny. Expect slower, more detailed review, and please follow these rules:
 
 - **No custom cryptographic primitives.** Use audited crates only (RustCrypto, or `age`). The approved algorithms are Argon2id for key derivation and XChaCha20-Poly1305 or AES-GCM for authenticated encryption.
-- **Justify cryptography-related dependencies** in `docs/`, covering why the crate is needed, its audit status and maintenance health.
+- **Justify cryptography-related dependencies** in [`docs/dependencies.md`](docs/dependencies.md), covering why the crate is needed, its audit status and maintenance health.
 - **Keep secrets in Rust.** The UI must never receive the vault key or raw key material. New Tauri commands must be minimal and return only what the UI strictly needs.
 - **Keep the capability set minimal.** Do not widen Tauri capabilities or relax the Content Security Policy without a documented reason.
 - **Handle memory carefully.** Wrap secrets in `secrecy` types, wipe them with `zeroize` and avoid unnecessary copies.
