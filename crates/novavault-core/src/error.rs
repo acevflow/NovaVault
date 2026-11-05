@@ -38,7 +38,9 @@ pub enum CryptoError {
     #[error("decryption failed: wrong key or corrupted data")]
     Decryption,
 
-    /// The input is too short to be a valid sealed message.
+    /// The input cannot be split into nonce, ciphertext and tag, in
+    /// practice because it is shorter than [`crate::OVERHEAD`]. Checked
+    /// before any decryption, so it reveals nothing about the key.
     #[error("malformed ciphertext")]
     MalformedCiphertext,
 
@@ -85,7 +87,8 @@ pub type Result<T> = core::result::Result<T, CryptoError>;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum VaultError {
-    /// Reading or writing the vault file failed.
+    /// Reading or writing the vault file, an attachment blob, an attachment
+    /// source or an export destination failed.
     #[error("vault file I/O error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -146,7 +149,10 @@ pub enum VaultError {
     #[error("operation cancelled")]
     Cancelled,
 
-    /// A cryptographic operation failed outside of unlocking.
+    /// A cryptographic operation failed in a way not covered above, for
+    /// example the random number generator or key derivation. A wrong
+    /// secret while unlocking is reported as
+    /// [`VaultError::InvalidCredentials`] instead.
     #[error(transparent)]
     Crypto(#[from] CryptoError),
 }
