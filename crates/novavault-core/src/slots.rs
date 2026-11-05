@@ -16,8 +16,10 @@
 //! The first [`SLOT_METADATA_LEN`] bytes are the slot metadata. The wrapping
 //! AEAD authenticates `header ‖ slot_metadata`, so changing the slot type,
 //! salt or KDF parameters, or moving a slot to another vault, makes
-//! unwrapping fail. `header` is the authenticated vault header supplied by
-//! the caller.
+//! unwrapping fail. `header` is supplied by the caller: the vault passes
+//! [`Header::slot_ad`](crate::header::Header::slot_ad), the header with its
+//! version field zeroed, so a format migration does not need to rewrite
+//! slots it has no secret for.
 
 use secrecy::{ExposeSecret, SecretSlice};
 
@@ -200,6 +202,8 @@ impl KeySlot {
         })
     }
 
+    /// Derives a wrapping key from `secret` with a new salt and seals
+    /// `vault_key` under it, authenticating `header ‖ slot_metadata`.
     fn wrap(
         slot_type: SlotType,
         secret: &SecretSlice<u8>,
@@ -226,12 +230,16 @@ impl KeySlot {
         Ok(slot)
     }
 
+    /// Re-derives the wrapping key from `secret` and opens the sealed vault
+    /// key, checking first that this is a slot of type `expected`.
     fn unwrap(
         &self,
         expected: SlotType,
         secret: &SecretSlice<u8>,
         header: &[u8],
     ) -> Result<SecretKey> {
+        // Checked before the slow derivation: trying a password against the
+        // recovery slot (or the reverse) is a caller bug, not a wrong secret.
         if self.slot_type != expected {
             return Err(CryptoError::MalformedKeySlot {
                 reason: "unexpected slot type",
@@ -248,6 +256,9 @@ impl KeySlot {
         })
     }
 
+    /// The first [`SLOT_METADATA_LEN`] bytes of the slot encoding (type,
+    /// salt, KDF parameters), which are also the slot's part of the
+    /// wrapping associated data.
     fn metadata(&self) -> [u8; SLOT_METADATA_LEN] {
         let mut metadata = [0u8; SLOT_METADATA_LEN];
         let fields = [self.slot_type.id()]
@@ -285,7 +296,8 @@ impl KeySlots {
     ///
     /// # Errors
     ///
-    /// Any error of [`KeySlot::wrap_password`] or [`RecoveryCode::generate`].
+    /// Any error of [`SecretKey::generate`], [`RecoveryCode::generate`],
+    /// [`KeySlot::wrap_password`] or [`KeySlot::wrap_recovery_code`].
     pub fn create(
         password: &SecretSlice<u8>,
         params: KdfParams,
