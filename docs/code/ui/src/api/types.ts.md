@@ -6,24 +6,24 @@ TypeScript types for the data exchanged with the Rust shell over Tauri IPC. They
 
 ## Public API
 
-| Name                   | Kind      | Signature                                                                    | Description                                        |
-| ---------------------- | --------- | ---------------------------------------------------------------------------- | -------------------------------------------------- |
-| `VaultStatus`          | interface | `{ readonly exists: boolean; readonly unlocked: boolean }`                   | Whether a vault exists and is unlocked.            |
-| `CredentialMethod`     | type      | `'password' \| 'recoveryCode'`                                               | Which secret a credential holds.                   |
-| `Credential`           | interface | `{ readonly method: CredentialMethod; readonly secret: string }`             | Master password or recovery code.                  |
-| `RecoveryCodeResponse` | interface | `{ readonly recoveryCode: string }`                                          | A recovery code shown once.                        |
-| `Settings`             | interface | `{ readonly autoLockMinutes: number; readonly clipboardClearSeconds: number }` | App settings, not secret.                        |
-| `ItemKind`             | type      | `'password' \| 'note' \| 'secret'`                                           | Item type.                                         |
-| `ItemSummary`          | interface | `{ id; kind: ItemKind; title; createdAtMs; updatedAtMs }`                    | Item list entry, no secret fields.                 |
-| `Attachment`           | interface | `{ id; name; size; addedAtMs }`                                              | Attachment metadata.                               |
-| `TransferProgress`     | interface | `{ readonly done: number; readonly total: number }`                          | Attachment transfer progress.                      |
-| `ItemDetails`          | type      | union over `kind` of `ItemDetailsBase & { … }`                               | Plain fields plus `has*` flags for secret fields.  |
-| `ItemInput`            | type      | union over `kind`                                                            | Content of a new item.                             |
-| `ItemUpdate`           | type      | union over `kind`, secret fields `string \| null`                            | New content for an existing item.                  |
-| `ItemField`            | type      | `'username' \| 'password' \| 'url' \| 'notes' \| 'body' \| 'value'`          | Field that can be revealed or copied.              |
-| `SecretItemField`      | type      | `Exclude<ItemField, 'username' \| 'url'>`                                    | Secret fields only.                                |
-| `CopyResult`           | interface | `{ readonly clearAfterSeconds: number }`                                     | Result of a copy.                                  |
-| `RevealedValue`        | interface | `{ readonly value: string }`                                                 | A revealed secret field.                           |
+| Name                   | Kind      | Signature | Description |
+| ---------------------- | --------- | --------- | ----------- |
+| `VaultStatus`          | interface | `export interface VaultStatus { readonly exists: boolean; readonly unlocked: boolean; }` | Whether a vault exists and is unlocked. |
+| `CredentialMethod`     | type      | `export type CredentialMethod = 'password' \| 'recoveryCode';` | Which secret a credential holds. |
+| `Credential`           | interface | `export interface Credential { readonly method: CredentialMethod; readonly secret: string; }` | Master password or recovery code. |
+| `RecoveryCodeResponse` | interface | `export interface RecoveryCodeResponse { readonly recoveryCode: string; }` | A recovery code shown once. |
+| `Settings`             | interface | `export interface Settings { readonly autoLockMinutes: number; readonly clipboardClearSeconds: number; }` | App settings, not secret. |
+| `ItemKind`             | type      | `export type ItemKind = 'password' \| 'note' \| 'secret';` | Item type. |
+| `ItemSummary`          | interface | `export interface ItemSummary { readonly id: string; readonly kind: ItemKind; readonly title: string; readonly createdAtMs: number; readonly updatedAtMs: number; }` | Item list entry, no secret fields. |
+| `Attachment`           | interface | `export interface Attachment { readonly id: string; readonly name: string; readonly size: number; readonly addedAtMs: number; }` | Attachment metadata. |
+| `TransferProgress`     | interface | `export interface TransferProgress { readonly done: number; readonly total: number; }` | Attachment transfer progress. |
+| `ItemDetails`          | type      | `export type ItemDetails = \| (ItemDetailsBase & { readonly kind: 'password'; readonly username: string; readonly url: string; readonly hasPassword: boolean; readonly hasNotes: boolean; }) \| (ItemDetailsBase & { readonly kind: 'note'; readonly hasBody: boolean; }) \| (ItemDetailsBase & { readonly kind: 'secret'; readonly hasValue: boolean; readonly hasNotes: boolean; });` | Plain fields plus `has*` flags for secret fields. |
+| `ItemInput`            | type      | `export type ItemInput = \| { readonly kind: 'password'; readonly title: string; readonly username: string; readonly password: string; readonly url: string; readonly notes: string; } \| { readonly kind: 'note'; readonly title: string; readonly body: string } \| { readonly kind: 'secret'; readonly title: string; readonly value: string; readonly notes: string; };` | Content of a new item. |
+| `ItemUpdate`           | type      | `export type ItemUpdate = \| { readonly kind: 'password'; readonly title: string; readonly username: string; readonly password: string \| null; readonly url: string; readonly notes: string \| null; } \| { readonly kind: 'note'; readonly title: string; readonly body: string \| null } \| { readonly kind: 'secret'; readonly title: string; readonly value: string \| null; readonly notes: string \| null; };` | New content for an existing item. |
+| `ItemField`            | type      | `export type ItemField = 'username' \| 'password' \| 'url' \| 'notes' \| 'body' \| 'value';` | Field that can be revealed or copied. |
+| `SecretItemField`      | type      | `export type SecretItemField = Exclude<ItemField, 'username' \| 'url'>;` | Secret fields only. |
+| `CopyResult`           | interface | `export interface CopyResult { readonly clearAfterSeconds: number; }` | Result of a copy. |
+| `RevealedValue`        | interface | `export interface RevealedValue { readonly value: string; }` | A revealed secret field. |
 
 All properties are `readonly`.
 
