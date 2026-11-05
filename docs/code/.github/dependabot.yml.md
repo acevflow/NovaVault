@@ -1,4 +1,4 @@
-# [`.github/dependabot.yml`](../../../../.github/dependabot.yml)
+# [`.github/dependabot.yml`](../../../.github/dependabot.yml)
 
 ## Purpose
 
