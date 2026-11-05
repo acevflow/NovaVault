@@ -78,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vault format version 1: item payloads list their attachments (identifier, size, time added, name). Version 0 vaults are migrated when unlocked, with a backup kept until the new file is verified.
 - `add_attachment`, `export_attachment` and `delete_attachment` commands. Native open and save dialogs are shown by the shell (`tauri-plugin-dialog`), so the UI never sends or receives a file path; transfers report progress over an IPC channel. `get_item` returns attachment metadata. New error codes `attachment_not_found`, `file_access` and `cancelled`.
 - Attachments on the item details screen: list with size and date, attach a file, export it, or remove it after confirmation, with a progress bar during transfers.
+- Security design document (`docs/security-design.md`): key hierarchy, recovery code flow, master password change, memory handling, auto-lock and clipboard behaviour, with per-OS notes.
+- Cryptography dependency inventory (`docs/dependencies.md`): every cryptography-related crate and package with its locked version, the reason it was chosen and the rejected alternatives.
 
 ### Changed
 
@@ -95,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vault format specification finalized for format version 0: file layout, header, record types and encoding, payload encoding and padding, integrity seal, reader validation order and test vectors. Attachments are no longer part of version 0 and will be specified with a later format version.
 - Architecture document describes the core library modules and the vault file; the threat model records the payload padding and the integrity seal.
 - `update_item` now keeps a secret field's stored value when it is sent as `null` or left out, so editing an item never requires loading its secrets into the UI; changing an item's type is rejected with `invalid_input`.
+- Threat model lists only implemented mitigations and adds a section of known limitations and gaps; corrected the recovery code entropy (150 bits), removed the claim of fuzz testing and clarified that new key slots always use the default Argon2id parameters. The architecture document links to the dependency inventory instead of duplicating it.
 - CI builds the UI before the Rust checks (the Tauri shell embeds the built UI) and checks UI formatting; Dependabot also tracks the root npm package (Tauri CLI).
 
 [Unreleased]: https://github.com/acevflow/NovaVault/commits/main
