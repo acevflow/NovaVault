@@ -9,6 +9,7 @@ use super::{LockMonitor, LockSink, MonitorError};
 pub struct UnsupportedMonitor;
 
 impl LockMonitor for UnsupportedMonitor {
+    /// Always fails, so the app reports that OS lock events are missing.
     fn start(&self, _sink: LockSink) -> Result<(), MonitorError> {
         Err(MonitorError::Unavailable("not supported on this platform"))
     }

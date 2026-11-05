@@ -52,11 +52,13 @@ pub struct Settings {
     clipboard_clear_seconds: u32,
 }
 
+/// Serde default for `clipboard_clear_seconds` (serde needs a function).
 const fn default_clipboard_clear_seconds() -> u32 {
     DEFAULT_CLIPBOARD_CLEAR_SECONDS
 }
 
 impl Default for Settings {
+    /// The settings of a fresh install, also used when the file is unusable.
     fn default() -> Self {
         Self {
             auto_lock_minutes: DEFAULT_AUTO_LOCK_MINUTES,
@@ -118,6 +120,9 @@ impl Settings {
 
     /// Reads the settings at `path`, falling back to the defaults if the
     /// file is missing, unreadable, malformed or out of bounds.
+    ///
+    /// Never fails: a damaged settings file must not keep the app from
+    /// starting, and the defaults keep auto-lock and clipboard clearing on.
     pub fn load(path: &Path) -> Self {
         fs::read(path)
             .ok()

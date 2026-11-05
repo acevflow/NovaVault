@@ -88,6 +88,9 @@ pub enum CommandError {
 
 impl CommandError {
     /// Stable machine-readable code sent to the UI.
+    ///
+    /// These strings are a contract with the UI (`ui/src/api`), which
+    /// branches on them: renaming one is a breaking change on both sides.
     pub const fn code(self) -> &'static str {
         match self {
             Self::Locked => "locked",
@@ -110,6 +113,8 @@ impl CommandError {
     }
 }
 
+// Written by hand: a derived `Serialize` would emit only the variant name,
+// while the UI expects `{ code, message }` with the fixed message text.
 impl Serialize for CommandError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut error = serializer.serialize_struct("CommandError", 2)?;
@@ -120,6 +125,8 @@ impl Serialize for CommandError {
 }
 
 impl From<VaultError> for CommandError {
+    /// Maps a core error to its UI code, dropping every detail it carries
+    /// (I/O text, corruption reasons, version numbers).
     fn from(error: VaultError) -> Self {
         match error {
             VaultError::Io(_) => Self::Storage,
@@ -142,6 +149,8 @@ impl From<VaultError> for CommandError {
 }
 
 impl From<CryptoError> for CommandError {
+    /// Maps a core cryptography error to its UI code. A failed decryption
+    /// is reported as wrong credentials, never as a distinct crypto error.
     fn from(error: CryptoError) -> Self {
         match error {
             CryptoError::RecoveryCodeLength
@@ -151,6 +160,7 @@ impl From<CryptoError> for CommandError {
             CryptoError::MalformedKeySlot { .. } | CryptoError::MalformedCiphertext => {
                 Self::Corrupted
             }
+            // `CryptoError` is non-exhaustive too: same reasoning as above.
             _ => Self::Internal,
         }
     }

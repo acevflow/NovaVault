@@ -40,6 +40,8 @@ const SCREEN_LOCKED: &str = "com.apple.screenIsLocked";
 pub struct MacMonitor;
 
 impl LockMonitor for MacMonitor {
+    /// Registers the three observers and returns. Must be called on the
+    /// main thread, whose run loop delivers the notifications.
     fn start(&self, sink: LockSink) -> Result<(), MonitorError> {
         if STARTED.swap(true, Ordering::SeqCst) {
             return Err(MonitorError::AlreadyStarted);

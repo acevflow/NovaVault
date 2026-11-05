@@ -39,6 +39,9 @@ const CLASS_NAME: PCWSTR = w!("NovaVaultLockListener");
 pub struct WindowsMonitor;
 
 impl LockMonitor for WindowsMonitor {
+    /// Spawns the listener thread and waits until its hidden window exists
+    /// and is subscribed, so setup failures are reported here rather than
+    /// lost on the thread.
     fn start(&self, sink: LockSink) -> Result<(), MonitorError> {
         SINK.set(sink).map_err(|_| MonitorError::AlreadyStarted)?;
         let (ready, started) = mpsc::channel();

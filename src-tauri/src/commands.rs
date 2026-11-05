@@ -10,6 +10,20 @@
 //! `capabilities/default.json` grants exactly those, so anything else is
 //! rejected by Tauri before it reaches Rust code.
 //!
+//! # Calling convention
+//!
+//! Every handler takes `app: AppHandle`, which Tauri injects; the UI never
+//! sends it. The other arguments come from the UI, under their camelCase
+//! names in JavaScript (`currentCredential`, `newPassword`, `itemId`,
+//! `attachmentId`, `onProgress`). Secret arguments deserialize straight
+//! into `SecretString` (see `dto`), so they are wiped once the command
+//! ends.
+//!
+//! A failed command returns a [`CommandError`]. Besides the errors listed
+//! on each command, any command can return [`CommandError::Internal`] for
+//! an unexpected failure, such as a worker thread panic or a failing random
+//! number generator; the details are dropped, never sent to the UI.
+//!
 //! # Attachments
 //!
 //! The attachment commands open the native file dialog themselves, in Rust,
@@ -45,8 +59,13 @@ use crate::settings::Settings;
 /// not flood the webview.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
-/// Shared app state: the single vault session.
+/// Shared app state: the single vault session, managed by Tauri.
+///
+/// One mutex serializes every command, the idle timer and the OS lock
+/// events. Commands are short and user-driven, so contention is rare, and
+/// a lock can never run halfway through another command.
 pub struct AppState {
+    /// The vault session; reached only through [`AppState::with_session`].
     session: Mutex<Session>,
     /// Set while a lock request waits for the session, so a running
     /// attachment transfer stops at its next chunk instead of delaying the
@@ -92,6 +111,15 @@ impl AppState {
 }
 
 /// Runs a command's logic on a blocking thread, as user activity.
+///
+/// Blocking, because Argon2id and file I/O must not stall Tauri's async
+/// workers or the main thread. Every command, even a read-only one, resets
+/// the inactivity timer: it shows that someone is using the app.
+///
+/// # Errors
+///
+/// Whatever `action` returns, or [`CommandError::Internal`] if the worker
+/// thread panics.
 async fn run<T: Send + 'static>(
     app: AppHandle,
     action: impl FnOnce(&mut Session) -> CommandResult<T> + Send + 'static,
@@ -103,17 +131,42 @@ async fn run<T: Send + 'static>(
         })
     })
     .await
+    // A join error carries the panic payload; dropped so no text reaches
+    // the UI.
     .map_err(|_| CommandError::Internal)?
 }
 
-/// Reports whether a vault exists and whether it is unlocked.
+/// Reports whether a vault exists and whether it is unlocked, so the UI
+/// can choose between the create and unlock screens.
+///
+/// # Returns
+///
+/// A [`VaultStatusDto`].
+///
+/// # Errors
+///
+/// [`CommandError::Storage`] if the vault location cannot be checked.
 #[tauri::command]
 pub async fn vault_status(app: AppHandle) -> CommandResult<VaultStatusDto> {
     run(app, |session| session.status()).await
 }
 
 /// Creates a new vault protected by `password` and leaves it unlocked.
-/// Returns the recovery code, which the UI must show exactly once.
+///
+/// # Arguments
+///
+/// - `password`: the new master password; must not be empty.
+///
+/// # Returns
+///
+/// The recovery code, which the UI must show exactly once: it is stored
+/// nowhere else.
+///
+/// # Errors
+///
+/// [`CommandError::InvalidInput`] for an empty password,
+/// [`CommandError::VaultExists`] if a vault already exists, or
+/// [`CommandError::Storage`] if the file cannot be written.
 #[tauri::command]
 pub async fn create_vault(
     app: AppHandle,
@@ -123,6 +176,21 @@ pub async fn create_vault(
 }
 
 /// Unlocks the vault with the master password or the recovery code.
+///
+/// The vault key stays in Rust; the UI only learns that unlocking worked.
+///
+/// # Arguments
+///
+/// - `credential`: the master password or the recovery code.
+///
+/// # Errors
+///
+/// [`CommandError::VaultNotFound`] if no vault exists,
+/// [`CommandError::InvalidRecoveryCode`] for a malformed code,
+/// [`CommandError::InvalidCredentials`] for a wrong secret, or
+/// [`CommandError::Storage`], [`CommandError::UnsupportedVault`] or
+/// [`CommandError::Corrupted`] if the vault file cannot be opened. On any
+/// error the vault is left locked.
 #[tauri::command]
 pub async fn unlock(app: AppHandle, credential: Credential) -> CommandResult<()> {
     run(app, move |session| session.unlock(&credential)).await
@@ -130,8 +198,16 @@ pub async fn unlock(app: AppHandle, credential: Credential) -> CommandResult<()>
 
 /// Locks the vault, wiping the vault key from memory, and clears a copied
 /// field from the clipboard. A running attachment transfer is stopped.
+///
+/// Locking an already locked vault succeeds.
+///
+/// # Errors
+///
+/// Only [`CommandError::Internal`].
 #[tauri::command]
 pub async fn lock(app: AppHandle) -> CommandResult<()> {
+    // Clear first: it does not need the session, so a copied secret goes
+    // away even while the lock waits for a transfer to stop.
     app.state::<ClipboardManager>().clear();
     tauri::async_runtime::spawn_blocking(move || {
         app.state::<AppState>()
@@ -143,7 +219,22 @@ pub async fn lock(app: AppHandle) -> CommandResult<()> {
 }
 
 /// Changes the master password of the unlocked vault, after checking the
-/// current password or recovery code.
+/// current password or recovery code. Only the vault key is re-wrapped;
+/// the recovery code keeps working.
+///
+/// # Arguments
+///
+/// - `current_credential`: the current password, or the recovery code for
+///   the forgotten-password flow. Asked again so that someone at an
+///   unattended, unlocked app cannot take the vault over.
+/// - `new_password`: the new master password; must not be empty.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidCredentials`] or
+/// [`CommandError::InvalidRecoveryCode`] if `current_credential` is wrong,
+/// [`CommandError::InvalidInput`] for an empty password, or
+/// [`CommandError::Storage`] if the vault file cannot be saved.
 #[tauri::command]
 pub async fn change_master_password(
     app: AppHandle,
@@ -157,7 +248,22 @@ pub async fn change_master_password(
 }
 
 /// Replaces the recovery code, after checking the current password or
-/// recovery code, and returns the new one, to show once.
+/// recovery code. The previous code stops working.
+///
+/// # Arguments
+///
+/// - `current_credential`: the current password or recovery code, as for
+///   [`change_master_password`].
+///
+/// # Returns
+///
+/// The new recovery code, which the UI must show exactly once.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], the errors of a wrong `current_credential`
+/// (see [`change_master_password`]), or [`CommandError::Storage`] if the
+/// vault file cannot be saved.
 #[tauri::command]
 pub async fn regenerate_recovery_code(
     app: AppHandle,
@@ -170,19 +276,51 @@ pub async fn regenerate_recovery_code(
 }
 
 /// Returns the app settings. Works while locked: they are not secret.
+///
+/// # Returns
+///
+/// The current [`Settings`].
+///
+/// # Errors
+///
+/// Only [`CommandError::Internal`].
 #[tauri::command]
 pub async fn get_settings(app: AppHandle) -> CommandResult<Settings> {
     run(app, |session| Ok(session.settings())).await
 }
 
-/// Sets the inactivity auto-lock timeout, in minutes (1 to 60).
+/// Sets the inactivity auto-lock timeout and saves it.
+///
+/// Requires an unlocked vault, so that someone at a locked app cannot
+/// lengthen the timeout before the owner unlocks it.
+///
+/// # Arguments
+///
+/// - `minutes`: the new timeout, 1 to 60.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`] if `minutes`
+/// is out of bounds, or [`CommandError::Storage`] if the settings file
+/// cannot be written (the previous value is then kept).
 #[tauri::command]
 pub async fn set_auto_lock_timeout(app: AppHandle, minutes: u32) -> CommandResult<()> {
     run(app, move |session| session.set_auto_lock_minutes(minutes)).await
 }
 
-/// Sets how long a copied field stays on the clipboard, in seconds (5 to
-/// 300).
+/// Sets how long a copied field stays on the clipboard, and saves it.
+///
+/// Requires an unlocked vault, like [`set_auto_lock_timeout`].
+///
+/// # Arguments
+///
+/// - `seconds`: the new delay, 5 to 300.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`] if `seconds`
+/// is out of bounds, or [`CommandError::Storage`] if the settings file
+/// cannot be written (the previous value is then kept).
 #[tauri::command]
 pub async fn set_clipboard_clear_delay(app: AppHandle, seconds: u32) -> CommandResult<()> {
     run(app, move |session| {
@@ -192,8 +330,25 @@ pub async fn set_clipboard_clear_delay(app: AppHandle, seconds: u32) -> CommandR
 }
 
 /// Copies one field of item `id` to the clipboard and schedules it to be
-/// cleared. The value is read and copied in Rust; the UI only learns the
-/// delay.
+/// cleared.
+///
+/// # Arguments
+///
+/// - `id`: the item identifier.
+/// - `field`: the field to copy, secret or plain.
+///
+/// # Returns
+///
+/// How long the clipboard will hold the value. The value itself never
+/// comes back to the UI.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`] for a
+/// malformed identifier or a field this kind of item does not have,
+/// [`CommandError::ItemNotFound`], [`CommandError::Corrupted`], or
+/// [`CommandError::ClipboardUnavailable`] if the clipboard cannot be
+/// written.
 #[tauri::command]
 pub async fn copy_item_field(
     app: AppHandle,
@@ -201,6 +356,8 @@ pub async fn copy_item_field(
     field: ItemField,
 ) -> CommandResult<CopyResultDto> {
     let worker = app.clone();
+    // The value goes from the session straight to the clipboard thread, in
+    // zeroizing storage; it is never serialized for the webview.
     let (text, settings) = run(app, move |session| {
         Ok((session.field_text(&id, field)?, session.settings()))
     })
@@ -219,24 +376,80 @@ pub async fn copy_item_field(
 }
 
 /// Lists the items of the unlocked vault, without secret fields.
+///
+/// # Returns
+///
+/// One [`ItemSummaryDto`] per item: identifier, kind, title and
+/// timestamps.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`] or [`CommandError::Corrupted`].
 #[tauri::command]
 pub async fn list_items(app: AppHandle) -> CommandResult<Vec<ItemSummaryDto>> {
     run(app, |session| session.list_items()).await
 }
 
-/// Adds an item and returns its identifier.
+/// Adds an item and saves the vault.
+///
+/// # Arguments
+///
+/// - `item`: the new item's content, tagged by `kind`.
+///
+/// # Returns
+///
+/// The new item's identifier.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidItem`] if the item
+/// cannot be stored, or [`CommandError::Storage`] if the vault file cannot
+/// be saved.
 #[tauri::command]
 pub async fn create_item(app: AppHandle, item: ItemInput) -> CommandResult<String> {
     run(app, move |session| session.create_item(item)).await
 }
 
 /// Returns item `id` without its secret values.
+///
+/// # Arguments
+///
+/// - `id`: the item identifier.
+///
+/// # Returns
+///
+/// The item's plain fields, attachments and, for each secret field, only
+/// whether it is set. Secrets come one at a time from
+/// [`reveal_item_field`].
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`] for a
+/// malformed identifier, [`CommandError::ItemNotFound`] or
+/// [`CommandError::Corrupted`].
 #[tauri::command]
 pub async fn get_item(app: AppHandle, id: String) -> CommandResult<ItemDetailsDto> {
     run(app, move |session| session.get_item(&id)).await
 }
 
 /// Returns one secret field of item `id`, because the user asked to see it.
+///
+/// This is the only command that sends an item secret to the webview, and
+/// only one field per call.
+///
+/// # Arguments
+///
+/// - `id`: the item identifier.
+/// - `field`: a secret field of that item's kind.
+///
+/// # Returns
+///
+/// The field's value.
+///
+/// # Errors
+///
+/// [`CommandError::InvalidInput`] if `field` is a plain field or not a
+/// field of this kind of item, and the errors of [`get_item`].
 #[tauri::command]
 pub async fn reveal_item_field(
     app: AppHandle,
@@ -246,22 +459,62 @@ pub async fn reveal_item_field(
     run(app, move |session| session.reveal_field(&id, field)).await
 }
 
-/// Updates item `id`; secret fields sent as `null` keep their values.
+/// Updates item `id` and saves the vault.
+///
+/// # Arguments
+///
+/// - `id`: the item identifier.
+/// - `item`: the new content. Its `kind` must match the stored item's;
+///   secret fields sent as `null` (or left out) keep their values, so the
+///   edit form never needs a secret the user did not reveal.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`] for a
+/// malformed identifier or a different kind,
+/// [`CommandError::ItemNotFound`], [`CommandError::InvalidItem`] or
+/// [`CommandError::Storage`].
 #[tauri::command]
 pub async fn update_item(app: AppHandle, id: String, item: ItemUpdate) -> CommandResult<()> {
     run(app, move |session| session.update_item(&id, item)).await
 }
 
-/// Deletes item `id`.
+/// Deletes item `id`, with its attachments, and saves the vault.
+///
+/// # Arguments
+///
+/// - `id`: the item identifier.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`] for a
+/// malformed identifier, [`CommandError::ItemNotFound`] or
+/// [`CommandError::Storage`].
 #[tauri::command]
 pub async fn delete_item(app: AppHandle, id: String) -> CommandResult<()> {
     run(app, move |session| session.delete_item(&id)).await
 }
 
-/// Asks the user for a file and attaches it to item `item_id`.
+/// Asks the user for a file in a native dialog, encrypts it as a new
+/// attachment of item `item_id`, and saves the vault.
 ///
-/// Returns the new attachment, or `None` if the user closed the dialog.
-/// Progress is reported on `on_progress`.
+/// # Arguments
+///
+/// - `item_id`: the item to attach the file to.
+/// - `on_progress`: receives [`TransferProgressDto`] updates, throttled.
+///
+/// # Returns
+///
+/// The new attachment, or `None` if the user closed the dialog.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`] or
+/// [`CommandError::ItemNotFound`] before the dialog opens;
+/// [`CommandError::FileAccess`] if the dialog fails or the file cannot be
+/// read, [`CommandError::InvalidItem`] if the item has too many
+/// attachments or the name is unusable, [`CommandError::Cancelled`] if a
+/// lock stopped the transfer, or [`CommandError::Storage`].
 #[tauri::command]
 pub async fn add_attachment(
     app: AppHandle,
@@ -291,8 +544,27 @@ pub async fn add_attachment(
 /// Asks the user where to save attachment `attachment_id` of item
 /// `item_id`, suggesting its file name, and decrypts it there.
 ///
-/// Returns `false` if the user closed the dialog. Progress is reported on
-/// `on_progress`.
+/// # Arguments
+///
+/// - `item_id`: the item that holds the attachment.
+/// - `attachment_id`: the attachment to export.
+/// - `on_progress`: receives [`TransferProgressDto`] updates, throttled.
+///
+/// # Returns
+///
+/// `true` once the file is written, or `false` if the user closed the
+/// dialog.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`],
+/// [`CommandError::ItemNotFound`] or [`CommandError::AttachmentNotFound`]
+/// before the dialog opens; [`CommandError::FileAccess`] if the dialog
+/// fails or the destination cannot be written (or is one of the vault's
+/// own files), [`CommandError::Corrupted`] if the encrypted data is
+/// missing or damaged, or [`CommandError::Cancelled`] if a lock stopped
+/// the transfer. Nothing is left at the destination if the data fails
+/// authentication.
 #[tauri::command]
 pub async fn export_attachment(
     app: AppHandle,
@@ -320,8 +592,19 @@ pub async fn export_attachment(
     .await
 }
 
-/// Removes attachment `attachment_id` from item `item_id` and deletes its
-/// encrypted data.
+/// Removes attachment `attachment_id` from item `item_id`, saves the vault
+/// and deletes the attachment's encrypted data.
+///
+/// # Arguments
+///
+/// - `item_id`: the item that holds the attachment.
+/// - `attachment_id`: the attachment to remove.
+///
+/// # Errors
+///
+/// [`CommandError::Locked`], [`CommandError::InvalidInput`],
+/// [`CommandError::ItemNotFound`], [`CommandError::AttachmentNotFound`] or
+/// [`CommandError::Storage`].
 #[tauri::command]
 pub async fn delete_attachment(
     app: AppHandle,
@@ -336,6 +619,11 @@ pub async fn delete_attachment(
 
 /// Shows the native "open file" dialog on a blocking thread. The session
 /// is not locked meanwhile, so the auto-lock keeps working.
+///
+/// # Errors
+///
+/// [`CommandError::FileAccess`] if the picked entry is not a file system
+/// path, or [`CommandError::Internal`].
 async fn pick_file(app: AppHandle) -> CommandResult<Option<PathBuf>> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut dialog = app.dialog().file().set_title("Attach a file");
@@ -352,6 +640,10 @@ async fn pick_file(app: AppHandle) -> CommandResult<Option<PathBuf>> {
 
 /// Shows the native "save file" dialog, suggesting `file_name`, on a
 /// blocking thread. The dialog asks before replacing an existing file.
+///
+/// # Errors
+///
+/// As for [`pick_file`].
 async fn save_file(app: AppHandle, file_name: String) -> CommandResult<Option<PathBuf>> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut dialog = app
@@ -373,13 +665,18 @@ async fn save_file(app: AppHandle, file_name: String) -> CommandResult<Option<Pa
 /// Forwards transfer progress to the UI, throttled, and stops the transfer
 /// when a lock is waiting.
 struct ProgressReporter {
+    /// To read [`AppState::transfer_interrupted`].
     app: AppHandle,
+    /// The UI's progress channel.
     channel: Channel<TransferProgressDto>,
+    /// Expected size in bytes, for the progress bar only.
     total: u64,
+    /// When the last message was sent; `None` before the first one.
     last_sent: Option<Instant>,
 }
 
 impl ProgressReporter {
+    /// A reporter for a transfer of about `total` bytes.
     fn new(app: AppHandle, channel: Channel<TransferProgressDto>, total: u64) -> Self {
         Self {
             app,

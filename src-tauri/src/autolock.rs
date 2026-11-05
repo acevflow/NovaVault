@@ -7,7 +7,7 @@
 //! it back to its start screen, without the UI having to listen for events,
 //! so no event permission has to be granted to the webview.
 //!
-//! Inactivity is measured from the last command (see `Session::touch`).
+//! Inactivity is measured from the last command (see [`Session::touch`]).
 //! The idle clock is monotonic; on platforms where it pauses during sleep,
 //! the suspend monitor covers that case by locking before the system sleeps.
 
@@ -78,6 +78,9 @@ pub fn lock_and_reset_ui(app: &AppHandle, reason: LockReason) {
 }
 
 /// Starts the background thread that enforces the auto-lock timeout.
+///
+/// The thread runs until the process exits; it holds no secret, only the
+/// app handle.
 ///
 /// A failure to start is reported on stderr and is not fatal: the vault
 /// still locks on user request and on OS events.

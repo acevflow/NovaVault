@@ -143,6 +143,8 @@ impl Session {
     /// [`CommandError::Storage`] if the file cannot be written.
     pub fn create(&mut self, password: &SecretString) -> CommandResult<RecoveryCodeDto> {
         let password = password_bytes(password)?;
+        // Drop any open vault first so its key is wiped before another is
+        // derived, and a failure below leaves the session locked.
         self.lock();
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|_| CommandError::Storage)?;
@@ -457,16 +459,30 @@ impl Session {
         Ok(())
     }
 
+    /// The unlocked vault. Every data command goes through this (or
+    /// [`Session::vault_mut`]), which makes it the one check that the vault
+    /// is unlocked.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`] while locked.
     fn vault(&self) -> CommandResult<&Vault> {
         self.vault.as_ref().ok_or(CommandError::Locked)
     }
 
+    /// Mutable access to the unlocked vault; see [`Session::vault`].
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`] while locked.
     fn vault_mut(&mut self) -> CommandResult<&mut Vault> {
         self.vault.as_mut().ok_or(CommandError::Locked)
     }
 }
 
 impl core::fmt::Debug for Session {
+    /// Shows only whether the vault is unlocked: the vault and the paths
+    /// stay out of any debug output.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Session")
             .field("unlocked", &self.is_unlocked())
