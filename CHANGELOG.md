@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README, security policy (`SECURITY.md`), Code of Conduct (Contributor Covenant 2.1), contributing guidelines and this changelog.
 - Documentation in `docs/`, indexed in `docs/README.md` and linked from the README: architecture overview, threat model, security design, cryptography dependency inventory (`docs/dependencies.md`), vault format specification (format version 1, with test vectors), Tauri command API reference, development guide and clipboard behaviour (`docs/clipboard.md`).
 - Rustdoc and TSDoc for the core library, the Tauri shell and the UI, explaining the security reasoning behind each module.
+- Per-file code reference documentation in `docs/code/`: one page per hand-written source file and significant configuration file (purpose, public API with exact signatures, security notes, dependencies, callers and tests), following `docs/code/TEMPLATE.md`, with an index by layer (`docs/code/README.md`) linked from the README and `docs/README.md`.
 - GitHub issue forms for bug reports and feature requests (blank issues disabled, vulnerabilities directed to private advisories) and a pull request template with a security impact section.
 - CI workflow running UI format, lint, typecheck, tests and build, then Rust format, clippy and tests on Windows, macOS and Linux, with caching and actions pinned to commit SHAs; CI status badge in the README.
 - Dependabot configuration for Cargo, npm (root and `ui/`) and GitHub Actions updates.
