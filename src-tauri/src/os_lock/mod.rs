@@ -69,7 +69,8 @@ pub enum MonitorError {
     Unavailable(&'static str),
 }
 
-/// The monitor for the platform this build targets.
+/// The monitor for the platform this build targets. Start it once: the
+/// platform hooks are process-global.
 pub fn platform_monitor() -> Box<dyn LockMonitor> {
     #[cfg(target_os = "windows")]
     return Box::new(windows::WindowsMonitor);

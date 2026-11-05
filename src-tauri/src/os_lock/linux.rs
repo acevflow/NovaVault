@@ -22,6 +22,7 @@ use zbus::Connection;
 use super::{LockMonitor, LockSink, MonitorError};
 use crate::autolock::LockReason;
 
+/// `org.freedesktop.login1.Manager`: sleep signals and session lookup.
 #[zbus::proxy(
     interface = "org.freedesktop.login1.Manager",
     default_service = "org.freedesktop.login1",
@@ -37,6 +38,8 @@ trait LoginManager {
     fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
 }
 
+/// `org.freedesktop.login1.Session`: one login session's lock signal. The
+/// path is set at runtime to the app's own session.
 #[zbus::proxy(
     interface = "org.freedesktop.login1.Session",
     default_service = "org.freedesktop.login1",
@@ -89,6 +92,8 @@ static STARTED: AtomicBool = AtomicBool::new(false);
 pub struct LinuxMonitor;
 
 impl LockMonitor for LinuxMonitor {
+    /// Spawns the D-Bus watchers and returns `Ok` at once; a missing bus
+    /// or service is reported later on stderr.
     fn start(&self, sink: LockSink) -> Result<(), MonitorError> {
         if STARTED.swap(true, Ordering::SeqCst) {
             return Err(MonitorError::AlreadyStarted);
