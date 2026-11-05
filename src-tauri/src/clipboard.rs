@@ -99,6 +99,7 @@ impl ClipboardBackend for SystemClipboard {
     }
 
     fn get_text(&mut self) -> Result<Option<Zeroizing<String>>, BackendError> {
+        // Zeroizing: what is read back is usually the secret we copied.
         match self.0.get_text() {
             Ok(text) => Ok(Some(Zeroizing::new(text))),
             Err(arboard::Error::ContentNotAvailable) => Ok(None),
@@ -115,19 +116,28 @@ impl ClipboardBackend for SystemClipboard {
 enum Message {
     /// Copy `text`, clear it after `clear_after`, and report the outcome.
     Copy {
+        /// The value to copy.
         text: Zeroizing<String>,
+        /// How long the clipboard may hold it.
         clear_after: Duration,
+        /// Receives the outcome of the copy.
         reply: Sender<Result<(), BackendError>>,
     },
     /// Clear now (the vault locked).
     Clear,
     /// Clear now, release the clipboard and stop.
-    Shutdown { reply: Sender<()> },
+    Shutdown {
+        /// Signalled once the clipboard is released.
+        reply: Sender<()>,
+    },
 }
 
 /// What the worker copied, and when to clear it.
 struct Pending {
+    /// The copied value. Kept only to check, before clearing, that the
+    /// clipboard still holds it; wiped when replaced or cleared.
     text: Zeroizing<String>,
+    /// When the clipboard must be cleared.
     deadline: Instant,
 }
 
@@ -209,6 +219,12 @@ impl ClipboardManager {
         }
     }
 
+    /// Queues `message` for the worker.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Internal`] if the worker is stopped or never
+    /// started.
     fn send(&self, message: Message) -> CommandResult<()> {
         self.sender
             .lock()
