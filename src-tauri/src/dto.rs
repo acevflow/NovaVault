@@ -7,6 +7,9 @@
 //! once. No type here derives `Debug`, so contents cannot end up in logs.
 //! No output ever contains a file system path: attachments are described by
 //! identifier, name and size only.
+//!
+//! Field names cross the boundary in camelCase (`#[serde(rename_all)]`),
+//! matching the TypeScript types in `ui/src/api`.
 
 use novavault_core::{
     Attachment, AttachmentId, Item, ItemContent, ItemId, ItemKind, ItemSummary, NoteItem,
@@ -393,6 +396,9 @@ impl Drop for ItemDetailsDto {
 
 /// One secret field's value, sent only when the user asks to reveal it.
 ///
+/// Output only: it has no `Deserialize` (the UI never sends it back) and
+/// no `Debug` (it cannot be printed by accident).
+///
 /// JSON: `{ "value": "…" }`.
 pub struct RevealedValueDto(SecretString);
 
@@ -437,6 +443,9 @@ pub enum Credential {
 
 /// One entry of the item list: identifier, type, title and timestamps.
 /// Never contains secret fields.
+///
+/// JSON example: `{ "id": "…", "kind": "note", "title": "Diary",
+/// "createdAtMs": 0, "updatedAtMs": 0 }`.
 #[derive(Serialize, Zeroize, ZeroizeOnDrop)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemSummaryDto {
@@ -481,6 +490,8 @@ pub struct VaultStatusDto {
 
 /// A newly created or regenerated recovery code, to show to the user once.
 ///
+/// Like [`RevealedValueDto`], output only and without `Debug`.
+///
 /// JSON: `{ "recoveryCode": "XXXX-XXXX-…" }`.
 pub struct RecoveryCodeDto(SecretString);
 
@@ -500,7 +511,7 @@ impl Serialize for RecoveryCodeDto {
     }
 }
 
-/// Wire name of an item kind.
+/// Wire name of an item kind, as used in the `kind` tag of the other DTOs.
 const fn kind_name(kind: ItemKind) -> &'static str {
     match kind {
         ItemKind::Password => "password",
