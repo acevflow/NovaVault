@@ -26,7 +26,13 @@ import type {
   VaultStatus,
 } from './types';
 
-/** Names of the commands this UI calls. */
+/**
+ * Names of the commands this UI calls.
+ *
+ * Keep in sync with `COMMANDS` in `src-tauri/build.rs`: the shell's
+ * capability allowlist is generated from that list, so a name missing
+ * there is rejected at runtime.
+ */
 export type CommandName =
   | 'vault_status'
   | 'create_vault'
@@ -48,6 +54,9 @@ export type CommandName =
   | 'export_attachment'
   | 'delete_attachment';
 
+// The single path to `invoke`: every rejection is normalized here, so
+// callers only ever see a `CommandError`. Nothing is logged, because the
+// arguments may hold a password or recovery code.
 async function call<T>(command: CommandName, args?: InvokeArgs): Promise<T> {
   try {
     return await invoke<T>(command, args);
@@ -64,6 +73,8 @@ export function vaultStatus(): Promise<VaultStatus> {
 /**
  * Creates the vault protected by `password` and leaves it unlocked.
  *
+ * @param password - The new master password. Sent to the shell once; this
+ *   module keeps no copy.
  * @returns The recovery code, to show to the user exactly once.
  */
 export async function createVault(password: string): Promise<string> {
@@ -71,7 +82,12 @@ export async function createVault(password: string): Promise<string> {
   return response.recoveryCode;
 }
 
-/** Unlocks the vault with the master password or the recovery code. */
+/**
+ * Unlocks the vault with the master password or the recovery code.
+ *
+ * @param credential - The secret to try. Sent to the shell once; this
+ *   module keeps no copy.
+ */
 export function unlock(credential: Credential): Promise<void> {
   return call('unlock', { credential });
 }
@@ -127,6 +143,8 @@ export function setClipboardClearDelay(seconds: number): Promise<void> {
  * the value itself, so it never reaches the UI, and clears the clipboard
  * after the configured delay.
  *
+ * @param id - The item's identifier.
+ * @param field - Which field to copy; plain or secret.
  * @returns Seconds until the clipboard is cleared.
  */
 export async function copyItemField(id: string, field: ItemField): Promise<number> {
@@ -139,7 +157,11 @@ export function listItems(): Promise<ItemSummary[]> {
   return call('list_items');
 }
 
-/** Reads one item's plain fields; secret values are not included. */
+/**
+ * Reads one item's plain fields; secret values are not included.
+ *
+ * @param id - The item's identifier.
+ */
 export function getItem(id: string): Promise<ItemDetails> {
   return call('get_item', { id });
 }
@@ -147,6 +169,9 @@ export function getItem(id: string): Promise<ItemDetails> {
 /**
  * Reads one secret field of an item. Call it only when the user asks to
  * see the value, and drop the result when it is hidden again.
+ *
+ * @param id - The item's identifier.
+ * @param field - Which secret field to read.
  */
 export async function revealItemField(id: string, field: SecretItemField): Promise<string> {
   const response = await call<RevealedValue>('reveal_item_field', { id, field });
@@ -162,12 +187,21 @@ export function createItem(item: ItemInput): Promise<string> {
   return call('create_item', { item });
 }
 
-/** Updates an item; secret fields set to `null` keep their stored values. */
+/**
+ * Updates an item; secret fields set to `null` keep their stored values.
+ *
+ * @param id - The item's identifier.
+ * @param item - The new content; its kind must match the stored item's.
+ */
 export function updateItem(id: string, item: ItemUpdate): Promise<void> {
   return call('update_item', { id, item });
 }
 
-/** Deletes an item. */
+/**
+ * Deletes an item and its attachments.
+ *
+ * @param id - The item's identifier.
+ */
 export function deleteItem(id: string): Promise<void> {
   return call('delete_item', { id });
 }
@@ -191,6 +225,8 @@ export function addAttachment(
  * Lets the user choose where to save an attachment in a native dialog,
  * shown by the shell, and decrypts it there.
  *
+ * @param itemId - The item the attachment belongs to.
+ * @param attachmentId - The attachment to export.
  * @param onProgress - Called with the decryption progress while it runs.
  * @returns `false` if the user closed the dialog.
  */
@@ -206,7 +242,12 @@ export function exportAttachment(
   });
 }
 
-/** Removes an attachment from an item and deletes its encrypted data. */
+/**
+ * Removes an attachment from an item and deletes its encrypted data.
+ *
+ * @param itemId - The item the attachment belongs to.
+ * @param attachmentId - The attachment to remove.
+ */
 export function deleteAttachment(itemId: string, attachmentId: string): Promise<void> {
   return call('delete_attachment', { itemId, attachmentId });
 }
