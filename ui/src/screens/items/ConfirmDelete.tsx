@@ -31,16 +31,16 @@ export interface ConfirmDeleteProps {
   readonly subject?: DeleteSubject;
   /** Whether the deletion is in progress. */
   readonly busy: boolean;
-  /** Deletes the item. */
+  /** Performs the deletion. */
   readonly onConfirm: () => void;
-  /** Keeps the item. */
+  /** Closes the question without deleting anything. */
   readonly onCancel: () => void;
 }
 
 /**
- * Asks the user to confirm a deletion, inline below the item.
+ * Asks the user to confirm a deletion, inline below what it deletes.
  *
- * Focus starts on Cancel, so pressing Enter by reflex keeps the item, and
+ * Focus starts on Cancel, so pressing Enter by reflex deletes nothing, and
  * Escape cancels.
  */
 export function ConfirmDelete({

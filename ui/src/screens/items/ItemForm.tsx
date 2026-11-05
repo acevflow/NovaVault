@@ -70,6 +70,10 @@ function hasStored(existing: ItemDetails, field: SecretItemField): boolean {
   }
 }
 
+/**
+ * Empty drafts for every secret field. A new item has nothing stored to
+ * keep, so its drafts start `loaded` and an empty field is sent as `''`.
+ */
 function initialSecrets(isNew: boolean): Record<SecretItemField, SecretDraft> {
   const draft = { value: '', loaded: isNew };
   return { password: draft, notes: draft, body: draft, value: draft };
@@ -244,12 +248,17 @@ export function ItemForm({ kind, existing, onSaved, onCancel, onLocked }: ItemFo
 }
 
 interface SecretInputProps {
+  /** Which secret field this input edits. */
   readonly field: SecretItemField;
+  /** Visible label. */
   readonly label: string;
+  /** The form's current copy of the field. */
   readonly draft: SecretDraft;
   /** Editing an item that has a stored value the user may load. */
   readonly canReveal: boolean;
+  /** Called as the field is typed. */
   readonly onChange: (value: string) => void;
+  /** Loads the stored value into the field. */
   readonly onReveal: () => void;
 }
 
