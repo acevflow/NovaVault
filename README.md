@@ -59,15 +59,6 @@ A short summary. The full design is in [security design](docs/security-design.md
 
 Found a vulnerability? Please read [SECURITY.md](SECURITY.md) and report it privately.
 
-## Tech stack
-
-| Layer       | Technology                                     |
-| ----------- | ---------------------------------------------- |
-| Core        | Rust (`crates/novavault-core`)                 |
-| Shell       | [Tauri 2](https://tauri.app/) (`src-tauri`)    |
-| UI          | React + TypeScript (`ui`)                      |
-| Platforms   | Windows, macOS, Linux                          |
-
 ## Building from source
 
 There is no released build yet. To try NovaVault, build it from source. The [development guide](docs/development.md) has the full per-OS setup, every command and troubleshooting tips.
@@ -116,21 +107,40 @@ The vault (`vault.nvault`), its attachments folder and a non-secret `settings.js
 | macOS | `~/Library/Application Support/io.github.acevflow.novavault/` |
 | Linux | `~/.local/share/io.github.acevflow.novavault/` (or `$XDG_DATA_HOME`) |
 
+## Project structure
+
+| Path | Contents |
+| ---- | -------- |
+| [`crates/novavault-core/`](crates/novavault-core) | Rust library: cryptography, vault format, key slots, recovery codes and attachments. UI-independent. |
+| [`src-tauri/`](src-tauri) | Thin Tauri 2 shell: the vault session, commands, auto-lock, clipboard, CSP and capabilities. |
+| [`ui/`](ui) | React + TypeScript front end (Vite, ESLint, Prettier, Vitest). |
+| [`docs/`](docs/README.md) | Architecture, threat model, security design, vault format, API reference and development guide. |
+| [`assets/`](assets) | Logo and app icon sources. |
+| [`scripts/check.mjs`](scripts/check.mjs) | The full local check run by `npm run check`. |
+| [`.github/`](.github) | CI workflow (Windows, macOS, Linux), Dependabot, issue and pull request templates. |
+
+The [development guide](docs/development.md#project-layout) has a more detailed layout.
+
 ## Documentation
 
 Project documentation lives in [`docs/`](docs/README.md):
 
-- [Architecture](docs/architecture.md): how the Rust core, the Tauri layer and the UI fit together, and why all cryptography lives in Rust.
-- [Threat model](docs/threat-model.md): assets, adversaries, threats and mitigations.
-- [Vault format specification](docs/vault-format.md): the versioned, public on-disk format (version 0, pre-release).
-- [Development guide](docs/development.md): setup per OS, commands and project layout.
+- [Architecture](docs/architecture.md): components, trust boundary, data flows, and why all cryptography lives in Rust.
+- [Threat model](docs/threat-model.md): assets, adversaries, mitigations, out-of-scope threats and known limitations.
+- [Security design](docs/security-design.md): key hierarchy, recovery code, memory handling, auto-lock and clipboard, with per-OS notes.
+- [Cryptography dependencies](docs/dependencies.md): every cryptography-related crate, its version and why it was chosen.
+- [Vault format specification](docs/vault-format.md): the versioned, public on-disk format (version 1, pre-release) with test vectors.
+- [API reference](docs/api-reference.md): every Tauri command the UI can call, with arguments, results and error codes.
+- [Development guide](docs/development.md): per-OS setup, commands, project layout and troubleshooting.
 - [Clipboard behaviour](docs/clipboard.md): how copy and auto-clear work on Windows, macOS, X11 and Wayland.
 
-Algorithms, parameters and the justification for every cryptography-related crate are in [Architecture: Cryptography and dependencies](docs/architecture.md#cryptography-and-dependencies).
+Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request, and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Please do not report security vulnerabilities in public issues; follow [SECURITY.md](SECURITY.md) instead.
 
 ## License
 
