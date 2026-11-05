@@ -16,8 +16,8 @@ This document describes how NovaVault is put together: its components, the layer
 
 | Component | Path | Language | Responsibility |
 | --------- | ---- | -------- | -------------- |
-| Core | `crates/novavault-core/` | Rust | Cryptography, key derivation, key slots, vault format (read/write/validate), record and attachment storage, session state. No dependency on Tauri or any UI. |
-| Shell | `src-tauri/` | Rust | Thin Tauri 2 application: window lifecycle, the Tauri command handlers, OS integration (auto-lock triggers on suspend and screen lock, clipboard, file dialogs), Content Security Policy and capability configuration. Delegates all vault logic to the core. |
+| Core | `crates/novavault-core/` | Rust | Cryptography, key derivation, key slots, vault format (read/write/validate), record and attachment storage, and the unlocked `Vault`, which owns the vault key. No dependency on Tauri or any UI. |
+| Shell | `src-tauri/` | Rust | Thin Tauri 2 application: window lifecycle, the session (the single unlocked `Vault`, last activity time, settings), the Tauri command handlers, OS integration (auto-lock triggers on suspend and screen lock, clipboard, file dialogs), Content Security Policy and capability configuration. Delegates all vault logic to the core. |
 | UI | `ui/` | React + TypeScript | Presentation and user input only. Renders forms and lists, sends user intents to the shell through Tauri commands and displays the results. Holds no keys. |
 
 ## Layers and trust boundary
@@ -32,10 +32,10 @@ This document describes how NovaVault is put together: its components, the layer
 ════════════════════════════╪═══════════════ trust boundary ═
 ┌───────────────────────────┴──────────────────────────────┐
 │ Shell (src-tauri)  Rust                                  │  trusted
-│   command handlers, OS hooks, clipboard, CSP/capabilities │
+│   command handlers, session, OS hooks, clipboard, CSP    │
 ├──────────────────────────────────────────────────────────┤
 │ Core (novavault-core)  Rust                              │  trusted
-│   session: vault key (secrecy + zeroize)                 │
+│   Vault: vault key (secrecy + zeroize)                   │
 │   key slots · Argon2id · AEAD · vault format · records   │
 └───────────────────────────┬──────────────────────────────┘
                             │  file I/O
@@ -46,13 +46,26 @@ This document describes how NovaVault is put together: its components, the layer
 
 The trust boundary is the Tauri IPC bridge. Everything above it is assumed to be potentially hostile (for example, if malicious content ever managed to execute script in the webview). Everything below it is the trusted computing base and is kept as small as possible.
 
+## Rust/UI boundary
+
+The webview reaches Rust only through the nineteen commands listed under [Tauri command surface](#tauri-command-surface). What crosses the boundary:
+
+| Direction | Data |
+| --------- | ---- |
+| UI → Rust | The master password, recovery codes and secret item fields, deserialized straight into `SecretString`; plain item fields (title, user name, URL); item and attachment identifiers as 32 hexadecimal digits; field names; settings values; a progress `Channel` for attachment transfers. |
+| Rust → UI | Whether a vault exists and is unlocked; item identifiers, kinds, titles, user names, URLs and timestamps; for each secret field only whether it is set; attachment identifiers, names, sizes and times; transfer progress in bytes; settings; typed errors with fixed messages. |
+| Rust → UI, on explicit request only | One secret field value per `reveal_item_field` call; a new recovery code from `create_vault` and `regenerate_recovery_code`. |
+| Never | The vault key, wrapping keys, KDF output, salts, ciphertext, file paths, and values copied to the clipboard (the shell copies them itself). |
+
+The vault location and the attachment files are chosen in Rust (fixed path, native dialogs), so no command takes a path. The core's `SecretKey` exposes its bytes only inside the crate, so even the shell cannot read the vault key.
+
 ## Core library
 
 `crates/novavault-core` is organized in layers, each using only the ones below it:
 
 | Module | Responsibility |
 | ------ | -------------- |
-| `vault` | `Vault`, the unlocked vault: `create`, `open_with_password`, `open_with_recovery_code` (both migrate older format versions), `list`, `get`, `insert`, `update`, `remove`, `save`, `add_attachment`, `export_attachment`, `remove_attachment`, `attachment`, `change_password`, `regenerate_recovery_code` (each rewrites one key slot and saves, restoring the previous slot if the save fails). |
+| `vault` | `Vault`, the unlocked vault: `create`, `open_with_password`, `open_with_recovery_code` (both migrate older format versions), `list`, `get`, `insert`, `update`, `remove`, `save`, `add_attachment`, `export_attachment`, `remove_attachment`, `attachment`, `attachments_dir`, `change_password`, `regenerate_recovery_code` (each rewrites one key slot and saves, restoring the previous slot if the save fails), `verify_password`, `verify_recovery_code` (re-authentication against the in-memory slots). |
 | `item` | The item model (`PasswordItem`, `NoteItem`, `SecretItem`, `ItemId`, `Attachment`, `AttachmentId`) and the padded payload encoding. |
 | `attachment` | Streaming, chunked encryption and decryption of attachment blobs. |
 | `format` (private) | Byte framing of the file, record associated data and the whole-file integrity seal. Pure functions, no I/O. |
@@ -72,7 +85,7 @@ header (32) ‖ password slot (101) ‖ recovery slot (101) ‖ record_count ‖
 - **Records** hold one item each. Only the random record identifier and the item type are in plaintext; the title, timestamps and fields are encrypted together under the vault key, padded to 64-byte buckets. Each record's associated data binds it to the vault header, its identifier and its type.
 - **Integrity seal.** The file ends with an AEAD tag under the vault key over everything before it, so removing, duplicating, reordering or replaying an individual record is detected, not only modifying one.
 - **Opening** checks the whole structure (magic, version, header fields, slots, record framing, sizes) before running Argon2id, so a foreign, newer or truncated file is rejected quickly with a precise `VaultError`. A wrong secret or damaged slot is reported as the single `InvalidCredentials` error. The seal is verified before any record can be read.
-- **Saving** encodes the file in memory and replaces the old one atomically: a temporary file in the same directory is written, flushed and renamed over the vault, so a crash leaves either the old or the new file, never a mix. On Unix the file is created owner-only.
+- **Saving** encodes the file in memory and replaces the old one atomically: a temporary file in the same directory is written, flushed and renamed over the vault, so a crash leaves either the old or the new file, never a mix. On Unix the file is created owner-only (`0600`) and the directory is synced after the rename.
 - **Migration.** A vault in an older format version is migrated when it is unlocked: every record is re-encrypted for the new version and the file rewritten atomically, with a backup kept until the new file reads back correctly. Key slots authenticate the header with its version field zeroed, so a migration never needs to rewrap a slot (it could not: it has only one of the two secrets). The version is still authenticated by the records and the seal.
 - **No new dependencies** were needed: the encoding is a small hand-written binary format and atomic writes use the standard library.
 
@@ -93,8 +106,8 @@ chunk i = XChaCha20-Poly1305(vault key, 64 KiB of plaintext, ad = header ‖ 0x0
 
 ## Session state
 
-- While a vault is unlocked, the core holds the 256-bit vault key in a `secrecy` wrapper inside the Rust process, owned by a `Vault` value. The key is zeroized when the `Vault` is dropped, which is how a vault is locked, and when the app exits.
-- Records stay encrypted in memory. A record is decrypted on demand for a single request and dropped (zeroized) once the response has been built; secret fields are `SecretString`s and other text fields are wiped on drop. The core does not keep a long-lived plaintext cache of the vault.
+- While a vault is unlocked, the core holds the 256-bit vault key in a `secrecy` wrapper inside the Rust process, owned by a `Vault` value. The key is zeroized when the `Vault` is dropped, which is how a vault is locked. Quitting the app does not lock the vault first; the key's memory is released with the process.
+- Records stay encrypted in memory. A record is decrypted on demand for a single request and dropped (zeroized) once the response has been built; secret fields are `SecretString`s and other text fields are wiped on drop. On open, every record is decrypted once (and dropped) to check that attachment identifiers are unique and to find unreferenced blobs. The core does not keep a long-lived plaintext cache of the vault.
 - Locking discards the session. Any subsequent command that needs vault data fails with a `locked` error until the user unlocks again.
 - In the shell, `Session` (`src-tauri/src/session.rs`) is the single owner of the unlocked `Vault`, behind a mutex in Tauri's managed state. It holds the vault path, the Argon2id parameters for new key slots and the time of the last command. It has no Tauri types, so the logic behind every command is unit-tested without a running app.
 - An attachment transfer holds the session mutex for its whole duration, so other commands wait for it. A manual lock or an OS lock event sets a flag before waiting for the mutex; the transfer checks it after each chunk and stops, so locking is delayed by at most one chunk. The inactivity timer does not interrupt a transfer: a transfer counts as activity, and the session is touched again when it ends.
@@ -119,18 +132,21 @@ Three triggers lock the vault automatically. All of them wipe the vault key (by 
 
 ### Create a vault
 
-1. The UI collects the master password and sends it with a `create_vault` command.
-2. The core generates a random 256-bit vault key and a recovery code from the OS CSPRNG.
-3. It derives a wrapping key from the master password and another from the recovery code with Argon2id, and wraps the vault key under each one, producing two key slots.
-4. It writes the header, key slots and an empty record set to disk (see [vault-format.md](vault-format.md)).
-5. The recovery code is returned to the UI exactly once for display. The user must confirm they have saved it before the flow completes. The core does not store the code itself.
+1. The UI collects the master password (rated at least “Strong” by the UI's strength check) and sends it with a `create_vault` command.
+2. The shell rejects an empty password, locks any open vault and creates the app data directory if needed. The core refuses to create a vault if anything already exists at the vault path.
+3. The core generates a random vault identifier, a random 256-bit vault key and a recovery code from the OS CSPRNG.
+4. It derives a wrapping key from the master password and another from the recovery code with Argon2id (default parameters), and wraps the vault key under each one, producing two key slots.
+5. It writes the header, key slots, an empty record set and the integrity seal to disk atomically (see [vault-format.md](vault-format.md)). The vault stays unlocked.
+6. The recovery code is returned to the UI exactly once, in display form (`{ recoveryCode }`). The user must retype it to confirm they have saved it before the flow completes. The core does not store the code itself.
 
 ### Unlock
 
-1. The UI sends the master password (or the recovery code) with an `unlock` command.
-2. The core reads the header and the matching key slot, derives the wrapping key with the stored Argon2id parameters and attempts to unwrap the vault key.
-3. Authentication failure yields a generic "wrong password or corrupted vault" error. On success the vault key is stored in the session.
-4. The UI receives only a success indicator and non-secret metadata (for example the list of record titles needed for navigation).
+1. The UI sends the master password or the recovery code with an `unlock` command.
+2. The shell locks any open vault first, so a failed attempt leaves the app locked, and returns `vault_not_found` if there is no vault file. A recovery code is then parsed and checked (alphabet, length, checksum) before the vault file is read, so a typo is reported as `invalid_recovery_code` without running Argon2id.
+3. The core reads the file and checks its whole structure (magic, version, header, key slots, record framing) before any key derivation.
+4. It derives the wrapping key from the secret with the slot's stored Argon2id parameters and unwraps the vault key. A wrong secret or a damaged slot yields the single `invalid_credentials` error.
+5. It verifies the whole-file integrity seal, migrates a file in an older format version, decrypts each record once to check attachment identifiers, and deletes unreferenced attachment blobs. The `Vault` is then stored in the session.
+6. The command returns nothing. The UI then calls `list_items` to show the vault.
 
 ### Read and edit a record
 
@@ -163,7 +179,7 @@ With the vault unlocked, the user first re-enters the current master password (o
 - Commands are coarse-grained and intent-based, never generic ("read bytes", "decrypt blob").
 - No command ever returns the vault key, wrapping keys, KDF output, or raw ciphertext.
 - Inputs are validated in Rust; errors returned to the UI are typed and contain no secret material.
-- Every handler (`src-tauri/src/commands.rs`) moves its arguments to a blocking worker thread, because Argon2id takes a noticeable time, then locks the session and delegates to it.
+- Every handler (`src-tauri/src/commands.rs`) moves its arguments to a blocking worker thread, because Argon2id takes a noticeable time, then locks the session, records the activity and delegates to it. Three steps run outside the session lock: `lock` clears the clipboard first and then asks a running transfer to stop before it takes the lock; `copy_item_field` writes the clipboard after releasing it; the attachment commands show their native dialog before taking it.
 - **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these nineteen and no core or plugin permission. A test checks that the two lists match.
 - **No paths from the UI.** The vault location is fixed by the shell, and attachment commands open the native file dialogs from Rust (`tauri-plugin-dialog`, whose own commands are not granted to the webview). The UI can therefore never make the shell read or write a file the user did not pick, and no response contains a path.
 
@@ -210,15 +226,15 @@ A failed command rejects with `{ code, message }`. The message is a fixed string
 | `vault_exists` | `create_vault` was called but a vault already exists. |
 | `invalid_credentials` | Wrong password or recovery code, or damaged key slot (intentionally indistinguishable). |
 | `invalid_recovery_code` | The recovery code is malformed (length, character or checksum): a typo, caught before key derivation. |
-| `invalid_input` | Malformed argument: an empty password or a bad item id. |
+| `invalid_input` | Malformed argument: an empty password, a malformed item or attachment id, a setting out of range, a plain field passed to `reveal_item_field`, a field the item's kind does not have, a different kind in `update_item`, or a picked file with no file name. |
 | `item_not_found` | No item has that id. |
 | `attachment_not_found` | The item has no attachment with that id. |
 | `file_access` | The picked file could not be read, the export destination could not be written, or the destination is one of the vault's own files. |
 | `cancelled` | An attachment transfer was stopped because the vault was locked. |
-| `invalid_item` | The item is too large or the vault is full. |
+| `invalid_item` | The item is too large, the vault is full, the item already has 1000 attachments, the file name cannot be used as an attachment name, or a size would overflow. |
 | `unsupported_vault` | Not a vault file, or a newer format version or unknown algorithm. |
 | `corrupted` | The vault file or an attachment blob failed a structural or integrity check, or a blob is missing. |
-| `storage` | The vault file could not be read or written. |
+| `storage` | The vault file, its directory or the settings file could not be read, written or checked. |
 | `clipboard_unavailable` | The system clipboard could not be opened or written. |
 | `internal` | Unexpected failure, for example of the system random number generator. |
 
@@ -249,7 +265,8 @@ Printing uses `window.print()` with a print stylesheet that hides everything exc
 
 ## Shell hardening
 
-- **Content Security Policy:** strict, with no remote origins, no inline scripts and no `eval`.
+- **Content Security Policy:** the production policy (`csp` in `tauri.conf.json`) is strict, with no remote origins, no inline scripts or styles and no `eval`; IPC is the only connection allowed. The development policy (`devCsp`) additionally allows the Vite dev server and inline code for hot reloading.
+- **Webview hardening:** `withGlobalTauri` is off (the UI imports `@tauri-apps/api` instead of using a global object) and `freezePrototype` is on, so script cannot tamper with built-in prototypes.
 - **Capabilities:** only the nineteen vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core or plugin permissions: no events, shell, filesystem, dialog or HTTP from the webview. Transfer progress uses a Tauri IPC channel passed as a command argument, which needs no extra permission.
 - **No network:** core features do not open network connections.
 
@@ -262,6 +279,8 @@ Printing uses `window.print()` with a print stylesheet that hides everything exc
 - **Smaller review scope.** Auditors and contributors can focus on one crate to verify the security properties of the whole application.
 
 ## Cryptography and dependencies
+
+**Final choice.** NovaVault uses exactly one authenticated encryption algorithm, **XChaCha20-Poly1305** (`aead_id` `0x01` in every vault file and attachment blob), and exactly one key derivation function, **Argon2id** version 0x13. No other algorithm is implemented and readers reject any other `aead_id`. AES-GCM was considered and rejected (see [below](#why-xchacha20-poly1305-rather-than-aes-gcm)). Changing either choice would require a new format version.
 
 The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error` modules). Everything else in the core is built on these few functions: recovery codes, key slots, records, the integrity seal and attachment chunks use only `derive_key`, `encrypt` and `decrypt`, and add no dependencies.
 
@@ -291,9 +310,9 @@ Every cryptography-related crate and why it is used:
 
 | Crate | Purpose | Justification |
 | ----- | ------- | ------------- |
-| [`argon2`](https://crates.io/crates/argon2) | Argon2id | RustCrypto, pure Rust, widely used. Default features are disabled (no `password-hash` string format, which the vault does not need); `zeroize` is enabled to wipe its internal memory. |
+| [`argon2`](https://crates.io/crates/argon2) | Argon2id | RustCrypto, pure Rust, widely used. Default features are disabled; only `alloc` and `zeroize` (to wipe its internal memory) are enabled. The core calls `hash_password_into` for raw key output and does not use the PHC password-hash string format. |
 | [`chacha20poly1305`](https://crates.io/crates/chacha20poly1305) | XChaCha20-Poly1305 | RustCrypto; its ChaCha20Poly1305 implementation has had an independent security audit (NCC Group). Default features are disabled; only `zeroize` is enabled. |
-| [`getrandom`](https://crates.io/crates/getrandom) | OS CSPRNG | The standard minimal interface to the operating system's random number generator, already a dependency of the RustCrypto crates. Used directly so random bytes can be written straight into zeroizing buffers. |
+| [`getrandom`](https://crates.io/crates/getrandom) | OS CSPRNG | The standard minimal interface to the operating system's random number generator, and the core's only source of randomness: with default features off, `argon2` and `chacha20poly1305` pull in no random number generator of their own. Used directly so random bytes can be written straight into zeroizing buffers. |
 | [`secrecy`](https://crates.io/crates/secrecy) | Secret wrappers | Prevents accidental exposure (no `Debug` leak, explicit `expose_secret`) and zeroizes on drop. |
 | [`zeroize`](https://crates.io/crates/zeroize) | Memory wiping | Clears buffers in a way the compiler cannot optimize away. Also used by `secrecy` and the RustCrypto crates. |
 | [`thiserror`](https://crates.io/crates/thiserror) | Error types | Derive macro only, no runtime code. Not cryptographic; listed for completeness. |
