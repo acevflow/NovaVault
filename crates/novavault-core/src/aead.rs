@@ -31,9 +31,20 @@ pub const TAG_LEN: usize = 16;
 /// Bytes a sealed message adds on top of the plaintext length.
 pub const OVERHEAD: usize = NONCE_LEN + TAG_LEN;
 
-/// Encrypts and authenticates `plaintext`, binding it to `aad`.
+/// Encrypts and authenticates `plaintext` under `key`, binding it to `aad`.
+///
+/// `aad` is authenticated but not encrypted or stored: [`decrypt`] must be
+/// given exactly the same bytes, so callers derive it from the context the
+/// ciphertext belongs to rather than from the ciphertext itself.
 ///
 /// Returns `nonce ‖ ciphertext ‖ tag`, of length `plaintext.len() + OVERHEAD`.
+///
+/// # Security
+///
+/// The nonce is drawn fresh for every call, so the same key may encrypt any
+/// number of messages a vault realistically produces. The returned bytes
+/// are ciphertext and need no special handling; `plaintext` is only
+/// borrowed and stays the caller's to wipe.
 ///
 /// # Errors
 ///
@@ -47,8 +58,17 @@ pub fn encrypt(key: &SecretKey, plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>>
 
 /// Verifies and decrypts a message produced by [`encrypt`].
 ///
+/// `sealed` is the full `nonce ‖ ciphertext ‖ tag` and `aad` must equal the
+/// associated data used to encrypt it.
+///
 /// The plaintext is returned in a [`SecretSlice`] so it is zeroized when
 /// dropped.
+///
+/// # Security
+///
+/// Nothing is returned unless the whole message authenticates; on failure
+/// the working buffer is wiped before the error is returned, so no
+/// unauthenticated plaintext survives.
 ///
 /// # Errors
 ///
@@ -81,10 +101,12 @@ pub fn decrypt(key: &SecretKey, sealed: &[u8], aad: &[u8]) -> Result<SecretSlice
     Ok(SecretSlice::from(buffer))
 }
 
-/// Encrypts with a caller-supplied nonce. Crate-internal: reusing a nonce
-/// under the same key breaks confidentiality and authenticity, so only
-/// [`encrypt`] (fresh random nonce) is public. Exposed to tests for known
-/// answer vectors.
+/// Encrypts with a caller-supplied nonce.
+///
+/// Private to this module: reusing a nonce under the same key breaks
+/// confidentiality and authenticity, so only [`encrypt`] (fresh random
+/// nonce) is exposed. It exists separately so the unit tests can check
+/// known-answer vectors.
 fn encrypt_with_nonce(
     key: &SecretKey,
     nonce: &[u8; NONCE_LEN],
