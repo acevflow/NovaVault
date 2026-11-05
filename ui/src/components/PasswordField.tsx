@@ -18,6 +18,7 @@ export function PasswordField({ label, ...rest }: PasswordFieldProps) {
       {...rest}
       label={label}
       type={visible ? 'text' : 'password'}
+      // After `rest`, so a caller cannot turn these back on.
       spellCheck={false}
       autoCorrect="off"
       autoCapitalize="off"

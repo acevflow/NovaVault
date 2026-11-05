@@ -59,6 +59,7 @@ export function SecretField({
     if (value === null) {
       void reveal();
     } else {
+      // Hiding forgets the value: revealing again asks the shell anew.
       setValue(null);
     }
   }
