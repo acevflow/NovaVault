@@ -114,6 +114,15 @@ NovaVault uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.
 - UI logic has unit tests; user-facing flows should be testable without real secrets.
 - Tests must never use real personal data or real vault files.
 
+## Documenting new code
+
+Every hand-written source file has a matching page under [`docs/code/`](docs/code/TEMPLATE.md), which mirrors the source tree (for example `crates/novavault-core/src/aead.rs` is documented in `docs/code/crates/novavault-core/src/aead.rs.md`).
+
+- Every new or changed source file requires its matching `docs/code/` page, created or updated in the same pull request.
+- Pages must follow [docs/code/TEMPLATE.md](docs/code/TEMPLATE.md): its layout, required sections and accuracy rules.
+- When a source file is renamed or deleted, move or delete its page as well.
+- The template lists which files are covered (Rust, TypeScript/TSX and significant configuration) and which are excluded (generated files, lockfiles, build output and `docs/`).
+
 ## Pull request process
 
 1. Make sure your branch is up to date with `main` and the full local check passes.
