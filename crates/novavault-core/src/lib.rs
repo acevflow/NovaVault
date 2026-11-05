@@ -16,11 +16,14 @@
 //! Modules:
 //!
 //! - [`vault`]: the unlocked [`Vault`]: create, open with the master
-//!   password or the recovery code, list, read, insert, update, remove and
-//!   save items atomically, change the master password and regenerate the
-//!   recovery code.
+//!   password or the recovery code (migrating older format versions), list,
+//!   read, insert, update, remove and save items atomically, add, export
+//!   and remove file attachments, change the master password and
+//!   regenerate the recovery code.
 //! - [`item`]: the [`Item`] model: [`PasswordItem`], [`NoteItem`] and
-//!   [`SecretItem`], identified by an [`ItemId`].
+//!   [`SecretItem`], identified by an [`ItemId`], with [`Attachment`]
+//!   metadata.
+//! - [`attachment`]: streaming, chunked encryption of attachment files.
 //! - [`header`]: the versioned plaintext file [`Header`].
 //! - [`slots`]: [`KeySlot`]s wrapping the vault key under the master
 //!   password or the recovery code, and the [`KeySlots`] table with the
@@ -33,14 +36,13 @@
 //!   random nonce per message.
 //! - [`keys`]: the zeroizing [`SecretKey`] type and [`Salt`].
 //! - [`error`]: the typed [`CryptoError`] and [`VaultError`].
-//!
-//! Encrypted attachments are not part of format version 0 yet.
 
 // No unsafe code in the trusted core, ever.
 #![forbid(unsafe_code)]
 
 pub mod aead;
 mod atomic;
+pub mod attachment;
 pub mod error;
 mod format;
 pub mod header;
@@ -55,12 +57,13 @@ pub mod vault;
 
 pub use aead::{NONCE_LEN, OVERHEAD, TAG_LEN, decrypt, encrypt};
 pub use error::{CryptoError, Result, VaultError, VaultResult};
-pub use header::{AeadId, FORMAT_VERSION, HEADER_LEN, Header, MAGIC, VaultId};
+pub use header::{AeadId, FORMAT_VERSION, HEADER_LEN, Header, MAGIC, MIN_READ_VERSION, VaultId};
 pub use item::{
-    Item, ItemContent, ItemId, ItemKind, ItemSummary, NoteItem, PasswordItem, SecretItem,
+    Attachment, AttachmentId, Item, ItemContent, ItemId, ItemKind, ItemSummary, NoteItem,
+    PasswordItem, SecretItem,
 };
 pub use kdf::{KdfParams, derive_key};
 pub use keys::{KEY_LEN, SALT_LEN, Salt, SecretKey};
 pub use recovery::RecoveryCode;
 pub use slots::{KeySlot, KeySlots, SLOT_LEN, SlotType};
-pub use vault::Vault;
+pub use vault::{ATTACHMENTS_DIR_SUFFIX, Vault};

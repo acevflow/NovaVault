@@ -3,13 +3,14 @@
 //! The header is the first [`HEADER_LEN`] bytes of every vault file. It is
 //! stored in the clear so a reader can identify the file and its algorithms
 //! before attempting to decrypt anything, and it is authenticated by being
-//! part of the associated data of every key slot, every record and the
-//! file's integrity seal. Integers are little-endian.
+//! part of the associated data of every record and of the file's integrity
+//! seal. Key slots authenticate it too, but with the version field zeroed
+//! (see [`Header::slot_ad`]). Integers are little-endian.
 //!
 //! ```text
 //! offset  size  field
 //!      0     8  magic           "NOVAVLT\0"
-//!      8     2  format_version  u16, 0 in this version
+//!      8     2  format_version  u16, 1 in this version (0 is migrated)
 //!     10     1  aead_id         1 = XChaCha20-Poly1305
 //!     11     1  flags           must be 0
 //!     12     1  slot_count      must be 2
@@ -26,14 +27,18 @@ use crate::error::{CryptoError, Result, VaultError, VaultResult};
 /// Bytes identifying a NovaVault vault file.
 pub const MAGIC: [u8; 8] = *b"NOVAVLT\0";
 
-/// The format version written and accepted by this build.
-pub const FORMAT_VERSION: u16 = 0;
+/// The format version written by this build.
+pub const FORMAT_VERSION: u16 = 1;
+
+/// The oldest format version this build reads. Older-version files are
+/// migrated to [`FORMAT_VERSION`] when they are opened.
+pub const MIN_READ_VERSION: u16 = 0;
 
 /// Length in bytes of the encoded header.
 pub const HEADER_LEN: usize = 32;
 
-/// Number of key slots in a version 0 vault: one password slot and one
-/// recovery slot.
+/// Number of key slots in a vault: one password slot and one recovery
+/// slot.
 pub const SLOT_COUNT: u8 = 2;
 
 /// Length in bytes of a [`VaultId`].
@@ -47,7 +52,7 @@ const VERSION_END: usize = MAGIC.len() + 2;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AeadId {
     /// XChaCha20-Poly1305 (draft-irtf-cfrg-xchacha), the only algorithm in
-    /// format version 0.
+    /// format versions 0 and 1.
     XChaCha20Poly1305,
 }
 
@@ -115,12 +120,13 @@ impl core::fmt::Debug for VaultId {
 
 /// The decoded vault header.
 ///
-/// In format version 0 every field except the vault identifier is fixed, so
-/// the header never changes after a vault is created. That matters: the
-/// header is associated data for every ciphertext, so changing it would
-/// require re-encrypting the whole vault.
+/// Every field except the version and the vault identifier is fixed, and
+/// the version changes only when a file is migrated to a newer format. That
+/// matters: the header is associated data for every record and the seal, so
+/// a migration re-encrypts every record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
+    version: u16,
     vault_id: VaultId,
 }
 
@@ -134,9 +140,24 @@ impl Header {
         Ok(Self::new(VaultId::generate()?))
     }
 
-    /// Builds a header for the vault `vault_id`.
+    /// Builds a header for the vault `vault_id` at the current
+    /// [`FORMAT_VERSION`].
     pub const fn new(vault_id: VaultId) -> Self {
-        Self { vault_id }
+        Self {
+            version: FORMAT_VERSION,
+            vault_id,
+        }
+    }
+
+    /// The same header with another format version. Crate-internal: used to
+    /// migrate older files and to build them in tests.
+    pub(crate) const fn with_version(self, version: u16) -> Self {
+        Self { version, ..self }
+    }
+
+    /// The file's format version.
+    pub const fn version(&self) -> u16 {
+        self.version
     }
 
     /// The vault's identifier.
@@ -153,11 +174,27 @@ impl Header {
     pub fn to_bytes(&self) -> [u8; HEADER_LEN] {
         let mut bytes = [0u8; HEADER_LEN];
         bytes[..MAGIC.len()].copy_from_slice(&MAGIC);
-        bytes[8..10].copy_from_slice(&FORMAT_VERSION.to_le_bytes());
+        bytes[8..10].copy_from_slice(&self.version.to_le_bytes());
         bytes[10] = self.aead().id();
         // bytes[11] (flags) and bytes[13..16] (reserved) stay zero.
         bytes[12] = SLOT_COUNT;
         bytes[16..].copy_from_slice(self.vault_id.as_bytes());
+        bytes
+    }
+
+    /// The header as authenticated by the key slots: [`Header::to_bytes`]
+    /// with the `format_version` field zeroed.
+    ///
+    /// Key slots can only be rewritten with their secret, and a migration
+    /// has at most one of the two. Leaving the version out of the slots'
+    /// associated data lets a migration change it without touching either
+    /// slot. The version stays authenticated: it is part of every record's
+    /// associated data and of the integrity seal, which are checked right
+    /// after unlocking. For a version 0 file this is exactly its header, so
+    /// slots written by version 0 remain valid.
+    pub fn slot_ad(&self) -> [u8; HEADER_LEN] {
+        let mut bytes = self.to_bytes();
+        bytes[8..10].fill(0);
         bytes
     }
 
@@ -171,8 +208,8 @@ impl Header {
     /// In the order they are checked:
     ///
     /// - [`VaultError::NotAVault`] if `file` does not start with [`MAGIC`].
-    /// - [`VaultError::UnsupportedVersion`] if the version is not
-    ///   [`FORMAT_VERSION`].
+    /// - [`VaultError::UnsupportedVersion`] if the version is not between
+    ///   [`MIN_READ_VERSION`] and [`FORMAT_VERSION`].
     /// - [`VaultError::Corrupted`] if the header is truncated.
     /// - [`VaultError::UnsupportedAlgorithm`] for an unknown algorithm.
     /// - [`VaultError::Corrupted`] for non-zero flags or reserved bytes, or a
@@ -186,7 +223,7 @@ impl Header {
         }
         let version = file.get(MAGIC.len()..VERSION_END).ok_or(TRUNCATED)?;
         let version = u16::from_le_bytes([version[0], version[1]]);
-        if version != FORMAT_VERSION {
+        if !(MIN_READ_VERSION..=FORMAT_VERSION).contains(&version) {
             return Err(VaultError::UnsupportedVersion { found: version });
         }
 
@@ -212,7 +249,7 @@ impl Header {
         }
         let mut vault_id = [0u8; VAULT_ID_LEN];
         vault_id.copy_from_slice(&header[16..]);
-        Ok(Self::new(VaultId::from_bytes(vault_id)))
+        Ok(Self::new(VaultId::from_bytes(vault_id)).with_version(version))
     }
 }
 
@@ -231,7 +268,7 @@ mod tests {
     /// Hex of [`sample`]'s encoding, as published in docs/vault-format.md.
     const SAMPLE_HEX: &str = concat!(
         "4e4f5641564c5400",                 // magic "NOVAVLT\0"
-        "0000",                             // format_version 0
+        "0100",                             // format_version 1
         "01",                               // aead_id XChaCha20-Poly1305
         "00",                               // flags
         "02",                               // slot_count
@@ -256,6 +293,26 @@ mod tests {
     }
 
     #[test]
+    fn reads_version_zero_for_migration() {
+        let old = sample().with_version(0);
+        let parsed = Header::parse(&old.to_bytes()).unwrap();
+        assert_eq!(parsed.version(), 0);
+        assert_eq!(parsed, old);
+    }
+
+    #[test]
+    fn slot_ad_ignores_only_the_version() {
+        let current = sample();
+        let old = current.with_version(0);
+        assert_eq!(current.slot_ad(), old.slot_ad());
+        // A version 0 header is its own slot associated data.
+        assert_eq!(old.slot_ad(), old.to_bytes());
+        assert_ne!(current.slot_ad(), current.to_bytes());
+        let other = Header::new(VaultId::from_bytes([0xEE; VAULT_ID_LEN]));
+        assert_ne!(current.slot_ad(), other.slot_ad());
+    }
+
+    #[test]
     fn generated_ids_are_distinct() {
         assert_ne!(VaultId::generate().unwrap(), VaultId::generate().unwrap());
     }
@@ -271,8 +328,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_other_versions_before_anything_else() {
-        for version in [1u16, 2, 0x0100, u16::MAX] {
+    fn rejects_newer_versions_before_anything_else() {
+        for version in [2u16, 0x0100, u16::MAX] {
             let mut bytes = sample().to_bytes();
             bytes[8..10].copy_from_slice(&version.to_le_bytes());
             // A file from a newer build may have a different layout, so only
