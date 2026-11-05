@@ -8,6 +8,8 @@ import { Button } from '../../components/Button';
 import { CopyButton } from '../../components/CopyButton';
 import { ScreenHeading } from '../../components/ScreenHeading';
 import { SecretField } from '../../components/SecretField';
+import { formatDateTime } from '../../format/dateTime';
+import { AttachmentList } from './AttachmentList';
 import { ConfirmDelete } from './ConfirmDelete';
 import { KIND_LABELS } from './kinds';
 
@@ -21,10 +23,6 @@ export interface ItemDetailsProps {
   readonly onDeleted: () => void;
   /** Called if the vault turns out to be locked. */
   readonly onLocked: () => void;
-}
-
-function formatTime(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 /** One item's fields, with secret fields hidden until revealed, and its actions. */
@@ -86,9 +84,17 @@ export function ItemDetails({ itemId, onEdit, onDeleted, onLocked }: ItemDetails
         <Fields details={details} onLocked={onLocked} />
         <div className="details__row">
           <dt>Last updated</dt>
-          <dd>{formatTime(details.updatedAtMs)}</dd>
+          <dd>{formatDateTime(details.updatedAtMs)}</dd>
         </div>
       </dl>
+      <AttachmentList
+        itemId={details.id}
+        attachments={details.attachments}
+        onChange={(attachments) => {
+          setDetails((current) => (current === null ? null : { ...current, attachments }));
+        }}
+        onLocked={onLocked}
+      />
       {error === null ? null : <Alert tone="error">{error}</Alert>}
       {confirming ? (
         <ConfirmDelete

@@ -3,11 +3,11 @@
 This document describes how NovaVault is put together: its components, the layers they form, how data moves between them, and why every cryptographic operation lives in Rust.
 
 > [!NOTE]
-> NovaVault is pre-alpha. The core library (cryptographic primitives, key slots, recovery codes and the vault file format with passwords, notes and secrets) the Tauri command layer with auto-lock, and the UI for creating, unlocking and locking the vault and for its security settings are in place (see [Core library](#core-library), [Tauri command surface](#tauri-command-surface) and [UI](#ui)). Item screens, revealing and copying secrets, and attachments are not implemented yet; those parts of this document describe the intended design and will be kept in sync with the code as they land.
+> NovaVault is pre-alpha. Every MVP feature described here is implemented: the core library (cryptographic primitives, key slots, recovery codes, the vault file format with passwords, notes, secrets and encrypted attachments), the Tauri command layer with auto-lock and clipboard handling, and the UI (see [Core library](#core-library), [Tauri command surface](#tauri-command-surface) and [UI](#ui)). It has not had an external security review and there is no release yet.
 
 ## Goals
 
-- **Local only.** The vault is a single file on the user's disk. Core features never use the network.
+- **Local only.** The vault is a file on the user's disk, plus a directory of encrypted attachment blobs next to it. Core features never use the network.
 - **Small trusted core.** Everything that touches keys or plaintext secrets is concentrated in one Rust library that can be reviewed and tested on its own.
 - **Untrusted presentation layer.** The UI is treated as the most exposed part of the app and is given as little power as possible.
 - **Simplicity.** A solo maintainer must be able to understand and audit the whole system.
@@ -39,9 +39,9 @@ This document describes how NovaVault is put together: its components, the layer
 │   key slots · Argon2id · AEAD · vault format · records   │
 └───────────────────────────┬──────────────────────────────┘
                             │  file I/O
-                   ┌────────┴────────┐
-                   │  vault file     │  encrypted at rest
-                   └─────────────────┘
+          ┌─────────────────┴──────────────────┐
+          │  vault file  +  attachment blobs   │  encrypted at rest
+          └────────────────────────────────────┘
 ```
 
 The trust boundary is the Tauri IPC bridge. Everything above it is assumed to be potentially hostile (for example, if malicious content ever managed to execute script in the webview). Everything below it is the trusted computing base and is kept as small as possible.
@@ -52,10 +52,11 @@ The trust boundary is the Tauri IPC bridge. Everything above it is assumed to be
 
 | Module | Responsibility |
 | ------ | -------------- |
-| `vault` | `Vault`, the unlocked vault: `create`, `open_with_password`, `open_with_recovery_code`, `list`, `get`, `insert`, `update`, `remove`, `save`, `change_password`, `regenerate_recovery_code` (each rewrites one key slot and saves, restoring the previous slot if the save fails). |
-| `item` | The item model (`PasswordItem`, `NoteItem`, `SecretItem`, `ItemId`) and the padded payload encoding. |
+| `vault` | `Vault`, the unlocked vault: `create`, `open_with_password`, `open_with_recovery_code` (both migrate older format versions), `list`, `get`, `insert`, `update`, `remove`, `save`, `add_attachment`, `export_attachment`, `remove_attachment`, `attachment`, `change_password`, `regenerate_recovery_code` (each rewrites one key slot and saves, restoring the previous slot if the save fails). |
+| `item` | The item model (`PasswordItem`, `NoteItem`, `SecretItem`, `ItemId`, `Attachment`, `AttachmentId`) and the padded payload encoding. |
+| `attachment` | Streaming, chunked encryption and decryption of attachment blobs. |
 | `format` (private) | Byte framing of the file, record associated data and the whole-file integrity seal. Pure functions, no I/O. |
-| `atomic` (private) | Atomic file replacement (temporary file, flush, rename). |
+| `atomic` (private) | Atomic file replacement (temporary file, flush, rename), also as a streaming writer that deletes its temporary file unless committed. |
 | `header` | The plaintext versioned header. |
 | `slots`, `recovery` | Key slots and recovery codes. |
 | `kdf`, `aead`, `keys`, `error` | Primitives, key types and typed errors (`CryptoError`, `VaultError`). |
@@ -72,7 +73,23 @@ header (32) ‖ password slot (101) ‖ recovery slot (101) ‖ record_count ‖
 - **Integrity seal.** The file ends with an AEAD tag under the vault key over everything before it, so removing, duplicating, reordering or replaying an individual record is detected, not only modifying one.
 - **Opening** checks the whole structure (magic, version, header fields, slots, record framing, sizes) before running Argon2id, so a foreign, newer or truncated file is rejected quickly with a precise `VaultError`. A wrong secret or damaged slot is reported as the single `InvalidCredentials` error. The seal is verified before any record can be read.
 - **Saving** encodes the file in memory and replaces the old one atomically: a temporary file in the same directory is written, flushed and renamed over the vault, so a crash leaves either the old or the new file, never a mix. On Unix the file is created owner-only.
+- **Migration.** A vault in an older format version is migrated when it is unlocked: every record is re-encrypted for the new version and the file rewritten atomically, with a backup kept until the new file reads back correctly. Key slots authenticate the header with its version field zeroed, so a migration never needs to rewrap a slot (it could not: it has only one of the two secrets). The version is still authenticated by the records and the seal.
 - **No new dependencies** were needed: the encoding is a small hand-written binary format and atomic writes use the standard library.
+
+### Attachments
+
+Attachment contents cannot live in the vault file: it is read and rewritten whole on every save and capped at 256 MiB. Each attachment is instead encrypted into its own *blob* file in `<vault file>.attachments/`, named by its random identifier. The owning item's encrypted payload lists each attachment's identifier, name, size and time added, so names and sizes are never in plaintext.
+
+```text
+blob = header (48: magic, version, algorithm, vault_id, attachment_id) ‖ chunk 0 ‖ … ‖ final chunk
+chunk i = XChaCha20-Poly1305(vault key, 64 KiB of plaintext, ad = header ‖ 0x03 ‖ i ‖ is_final)
+```
+
+- **Streaming.** Only one 64 KiB chunk of plaintext is in memory at a time, in a buffer wiped on drop, for files of any size.
+- **Integrity.** The chunk index and final flag in each chunk's associated data detect reordered, dropped, duplicated and truncated chunks (the STREAM construction); the header binds every chunk to its vault and attachment, so blobs cannot be swapped. The size in the record must match. Blobs are never rewritten, so there is no older blob to roll back to.
+- **Export without partial plaintext.** Decrypted data goes to a temporary file next to the destination, renamed into place only once every chunk has authenticated and the size matches. On any failure or cancellation the temporary file is deleted. Exports to the vault file or into the attachments directory are refused.
+- **Lifecycle.** A new blob is complete on disk before an item refers to it. Blobs of removed attachments or items are deleted only after the vault file that no longer lists them has been saved. Blobs left behind by a crash or a failed save are deleted the next time the vault is opened.
+- **Why not the `aead-stream` crate.** It implements the same STREAM idea with counter-derived nonces. Building it from the vault's existing `aead::encrypt`/`decrypt` with random 192-bit nonces adds about a hundred lines and no dependency, keeps a single AEAD code path, and needs no nonce bookkeeping. No new cryptographic primitive is involved; the composition is specified in [vault-format.md](vault-format.md#9-attachments).
 
 ## Session state
 
@@ -80,6 +97,7 @@ header (32) ‖ password slot (101) ‖ recovery slot (101) ‖ record_count ‖
 - Records stay encrypted in memory. A record is decrypted on demand for a single request and dropped (zeroized) once the response has been built; secret fields are `SecretString`s and other text fields are wiped on drop. The core does not keep a long-lived plaintext cache of the vault.
 - Locking discards the session. Any subsequent command that needs vault data fails with a `locked` error until the user unlocks again.
 - In the shell, `Session` (`src-tauri/src/session.rs`) is the single owner of the unlocked `Vault`, behind a mutex in Tauri's managed state. It holds the vault path, the Argon2id parameters for new key slots and the time of the last command. It has no Tauri types, so the logic behind every command is unit-tested without a running app.
+- An attachment transfer holds the session mutex for its whole duration, so other commands wait for it. A manual lock or an OS lock event sets a flag before waiting for the mutex; the transfer checks it after each chunk and stops, so locking is delayed by at most one chunk. The inactivity timer does not interrupt a transfer: a transfer counts as activity, and the session is touched again when it ends.
 - There is one vault per installation, at `vault.nvault` in the app data directory (for example `%APPDATA%\io.github.acevflow.novavault` on Windows, `~/Library/Application Support/io.github.acevflow.novavault` on macOS and `~/.local/share/io.github.acevflow.novavault` on Linux). The path is chosen by the shell and never sent by the UI.
 
 ## Auto-lock
@@ -128,7 +146,13 @@ Copying runs on one worker thread in the shell (`src-tauri/src/clipboard.rs`) th
 
 ### Lock
 
-Triggered by the user, by the inactivity timer, or by OS events (suspend, screen lock) observed in the shell. The core zeroizes the vault key and drops the session, the shell clears a copied field from the clipboard, and the UI clears its in-memory view state and returns to the unlock screen.
+Triggered by the user, by the inactivity timer, or by OS events (suspend, screen lock) observed in the shell. The core zeroizes the vault key and drops the session, the shell clears a copied field from the clipboard, and the UI clears its in-memory view state and returns to the unlock screen. A manual or OS-triggered lock first stops a running attachment transfer at its next chunk.
+
+### Attachments
+
+1. **Add.** The UI calls `add_attachment` with the item id and a progress channel. The shell checks that the vault is unlocked and the item exists, then shows the native open dialog itself, without holding the session lock, so an open dialog never delays the auto-lock. It then opens the chosen file and the core streams it into a new blob, reporting progress after each chunk; the shell forwards it to the UI at most every 100 ms. The item is updated and the vault saved. The UI receives the attachment's id, name, size and time, never the path.
+2. **Export.** `export_attachment` reads the attachment's name, shows the native save dialog with that name suggested (the dialog asks before replacing a file), then decrypts the blob to a temporary file next to the chosen destination and moves it into place only when the whole blob has authenticated.
+3. **Delete.** `delete_attachment` removes the attachment from the item, saves the vault, then deletes the blob. Deleting an item deletes all its blobs the same way.
 
 ### Change master password or regenerate the recovery code
 
@@ -140,7 +164,8 @@ With the vault unlocked, the user first re-enters the current master password (o
 - No command ever returns the vault key, wrapping keys, KDF output, or raw ciphertext.
 - Inputs are validated in Rust; errors returned to the UI are typed and contain no secret material.
 - Every handler (`src-tauri/src/commands.rs`) moves its arguments to a blocking worker thread, because Argon2id takes a noticeable time, then locks the session and delegates to it.
-- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these sixteen and no core plugin permission. A test checks that the two lists match.
+- **Allow-list.** `src-tauri/build.rs` declares the commands, so Tauri generates one `allow-<command>` permission per command and rejects any call the window's capability does not grant. `capabilities/default.json` grants exactly these nineteen and no core or plugin permission. A test checks that the two lists match.
+- **No paths from the UI.** The vault location is fixed by the shell, and attachment commands open the native file dialogs from Rust (`tauri-plugin-dialog`, whose own commands are not granted to the webview). The UI can therefore never make the shell read or write a file the user did not pick, and no response contains a path.
 
 ### Commands
 
@@ -163,11 +188,14 @@ Arguments are camelCase in JavaScript (`invoke('change_master_password', { curre
 | `copy_item_field` | `id`, `field` | `{ clearAfterSeconds }` | Copies any field (also `"username"` and `"url"`) to the clipboard from Rust; the value is not returned. `clipboard_unavailable` if the clipboard cannot be written. |
 | `create_item` | `item` | `id` | |
 | `update_item` | `id`, `item` | nothing | Secret fields set to `null` (or left out) keep their stored value. The kind must match the stored item (`invalid_input` otherwise). |
-| `delete_item` | `id` | nothing | |
+| `delete_item` | `id` | nothing | Also deletes the item's attachment blobs, after the vault is saved. |
+| `add_attachment` | `itemId`, `onProgress` (a `Channel`) | attachment or `null` | Shows the native open dialog and encrypts the chosen file into the item. `null` if the user closes the dialog. Progress messages are `{ done, total }` in bytes. |
+| `export_attachment` | `itemId`, `attachmentId`, `onProgress` | `true`, or `false` if the dialog was closed | Shows the native save dialog with the file name suggested and decrypts the attachment there. Nothing is written at the destination if the data fails authentication. |
+| `delete_attachment` | `itemId`, `attachmentId` | nothing | Removes the attachment from the item, saves, then deletes its blob. |
 
 `item` is tagged by `kind`: `{ kind: "password", title, username, password, url, notes }`, `{ kind: "note", title, body }` or `{ kind: "secret", title, value, notes }`. For `create_item` every field is required (use empty strings). Secret fields are deserialized straight into `SecretString`.
 
-Item details from `get_item` are `{ id, kind, title, createdAtMs, updatedAtMs, … }` with, per kind: `password`: `username`, `url`, `hasPassword`, `hasNotes`; `note`: `hasBody`; `secret`: `hasValue`, `hasNotes`.
+Item details from `get_item` are `{ id, kind, title, createdAtMs, updatedAtMs, attachments, … }` with, per kind: `password`: `username`, `url`, `hasPassword`, `hasNotes`; `note`: `hasBody`; `secret`: `hasValue`, `hasNotes`. `attachments` is a list of `{ id, name, size, addedAtMs }`.
 
 Every edit is saved to disk at once (atomically). If a save fails, the command returns `storage`; the edit stays in memory and is written by the next successful save.
 
@@ -184,9 +212,12 @@ A failed command rejects with `{ code, message }`. The message is a fixed string
 | `invalid_recovery_code` | The recovery code is malformed (length, character or checksum): a typo, caught before key derivation. |
 | `invalid_input` | Malformed argument: an empty password or a bad item id. |
 | `item_not_found` | No item has that id. |
+| `attachment_not_found` | The item has no attachment with that id. |
+| `file_access` | The picked file could not be read, the export destination could not be written, or the destination is one of the vault's own files. |
+| `cancelled` | An attachment transfer was stopped because the vault was locked. |
 | `invalid_item` | The item is too large or the vault is full. |
 | `unsupported_vault` | Not a vault file, or a newer format version or unknown algorithm. |
-| `corrupted` | The file failed a structural or integrity check. |
+| `corrupted` | The vault file or an attachment blob failed a structural or integrity check, or a blob is missing. |
 | `storage` | The vault file could not be read or written. |
 | `clipboard_unavailable` | The system clipboard could not be opened or written. |
 | `internal` | Unexpected failure, for example of the system random number generator. |
@@ -199,11 +230,11 @@ The UI (`ui/src`) is a React + TypeScript app built with Vite. It holds no keys 
 | ---- | -------- |
 | `api/` | Typed wrappers over every command (`commands.ts`), DTO types (`types.ts`) and `CommandError` with the error codes and user-facing messages (`errors.ts`). This is the only code that calls `invoke`. |
 | `app/` | The router (a reducer over a `Route` union, not a router library: there are few screens and no URLs) and the app shell (skip link, navigation, lock button). |
-| `screens/` | Create vault, unlock, settings, and `items/`: the vault screen with the item list (title search and type filter in `filterItems.ts`), item details, the create and edit form and the delete confirmation. |
+| `screens/` | Create vault, unlock, settings, and `items/`: the vault screen with the item list (title search and type filter in `filterItems.ts`), item details with their attachments (`AttachmentList`), the create and edit form and the delete confirmation. |
 | `recovery/` | `RecoveryCodeFlow`: shows a new recovery code once, prints it, and requires retyping it. Used at creation and on regeneration. |
 | `password/` | Lazy-loaded zxcvbn strength estimate, strength meter and new-password fields. A master password must rate at least 3 of 4 (“Strong”). |
 | `components/` | Accessible base components: button, text, text area and password fields, alert, focus-managed headings, `SecretField` (hidden until revealed) and `CopyButton`. |
-| `format/` | Text formatting helpers (durations). |
+| `format/` | Text formatting helpers (durations, dates, file sizes and transfer percentages). |
 | `theme/` | Light and dark themes from CSS tokens, following the system unless the user picks one. The choice (not secret) is kept in `localStorage`. |
 
 Routing starts from `vault_status`: no vault leads to the create flow, a locked vault to the unlock screen. A `locked` error from any command, the Lock button and every auto-lock (which reloads the webview) all end on the unlock screen.
@@ -212,12 +243,14 @@ Secrets in the UI: the master password, the recovery code while it is shown or r
 
 Secret item fields are masked by default. A revealed value lives only in the state of its `SecretField` and is dropped when hidden, when another item is selected and on lock. The edit form starts secret fields empty and sends `null` for any the user did not change; **Reveal current …** loads the stored value only on request. Copy buttons never receive the value.
 
+Attachments are listed under the item's details with their size and date. **Attach file**, **Export** and **Remove** (after confirmation) call the attachment commands; a progress bar with the percentage and byte counts follows each transfer, and the other attachment actions are disabled meanwhile. Closing a native dialog cancels silently. The UI only ever holds attachment names, sizes and progress, never contents or paths.
+
 Printing uses `window.print()` with a print stylesheet that hides everything except the recovery sheet.
 
 ## Shell hardening
 
 - **Content Security Policy:** strict, with no remote origins, no inline scripts and no `eval`.
-- **Capabilities:** only the sixteen vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core plugin permissions: no events, shell, filesystem or HTTP from the webview.
+- **Capabilities:** only the nineteen vault commands are granted (see [Tauri command surface](#tauri-command-surface)). No core or plugin permissions: no events, shell, filesystem, dialog or HTTP from the webview. Transfer progress uses a Tauri IPC channel passed as a command argument, which needs no extra permission.
 - **No network:** core features do not open network connections.
 
 ## Why all cryptography lives in Rust
@@ -230,7 +263,7 @@ Printing uses `window.print()` with a print stylesheet that hides everything exc
 
 ## Cryptography and dependencies
 
-The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error` modules). Everything else in the core is built on these few functions: recovery codes, key slots, records and the integrity seal use only `derive_key`, `encrypt` and `decrypt`, and add no dependencies.
+The primitives live in `crates/novavault-core` (`kdf`, `aead`, `keys` and `error` modules). Everything else in the core is built on these few functions: recovery codes, key slots, records, the integrity seal and attachment chunks use only `derive_key`, `encrypt` and `decrypt`, and add no dependencies.
 
 ### Algorithms and parameters
 
@@ -273,6 +306,7 @@ Shell (`src-tauri`) dependencies that handle secrets or OS security events:
 | [`zeroize`](https://crates.io/crates/zeroize) (`derive`) | Wiping responses | Item titles, user names and URLs in list and details responses, and values copied to the clipboard, are wiped once used. |
 | [`serde`](https://crates.io/crates/serde) | IPC (de)serialization | Already used by Tauri for every command; no new crate. |
 | [`serde_json`](https://crates.io/crates/serde_json) | Settings file | Reads and writes the non-secret `settings.json`. Already a Tauri dependency; no new crate. |
+| [`tauri-plugin-dialog`](https://crates.io/crates/tauri-plugin-dialog) | Native open and save dialogs for attachments | The official Tauri plugin (Apache-2.0 OR MIT), built on `rfd`, which uses the system dialogs on Windows, macOS and Linux (GTK). Called only from Rust: the plugin's own webview commands are not granted, so the UI cannot open dialogs or learn paths. It pulls in `tauri-plugin-fs` for its path type, whose commands are not granted either. Not cryptographic; listed because it decides which files the shell reads and writes. |
 | [`arboard`](https://crates.io/crates/arboard) | Clipboard copy and clear | Maintained by 1Password for exactly this use; one API for Windows, macOS, X11 and Wayland, including the clipboard-history opt-outs (Windows history and cloud formats, macOS `ConcealedType`, KDE password hint). Default features are off (no image support). The `wayland-data-control` feature adds the pure-Rust `wl-clipboard-rs` so the clipboard works natively on Wayland; without it only XWayland would work. Doing the copy in Rust is what keeps copied values out of the webview. |
 | [`windows`](https://crates.io/crates/windows) (Windows only) | Suspend and screen-lock events | Microsoft's official Win32 bindings, same version Tauri already uses. Only the window, library loader and remote desktop session APIs are enabled. |
 | [`objc2-app-kit`](https://crates.io/crates/objc2-app-kit), [`objc2-foundation`](https://crates.io/crates/objc2-foundation), [`block2`](https://crates.io/crates/block2) (macOS only) | Sleep and screen-lock notifications | The Objective-C bindings Tauri itself uses, same versions; only `NSWorkspace` and the notification center APIs are enabled. |
@@ -290,7 +324,8 @@ UI (`ui/`) runtime dependencies. None of them implements cryptography; they are 
 - Argon2id: RFC 9106 §5.3 (with secret and associated data) and the reference implementation's `password`/`somesalt` vector, both run through the same parameter wiring as production derivation.
 - XChaCha20-Poly1305: draft-irtf-cfrg-xchacha-03 Appendix A.3.1.
 - Tamper detection: every single-bit flip of a sealed message, truncation, appended bytes, a wrong key and wrong associated data are all rejected.
-- Vault format: known encodings of the header and of an item payload (published in [vault-format.md](vault-format.md#13-test-vectors)); every truncation of a vault file; a flipped byte in every field of every section; a removed or replayed record; unsupported versions, algorithms and foreign files.
+- Vault format: known encodings of the header, of item payloads (versions 0 and 1) and of an attachment blob header (published in [vault-format.md](vault-format.md#13-test-vectors)); every truncation of a vault file; a flipped byte in every field of every section; a removed or replayed record; unsupported versions, algorithms and foreign files; a rewritten version field; migration from version 0 with either secret.
+- Attachments: round trips at every chunk boundary and a 32 MiB file streamed through bounded buffers; truncation at chunk boundaries and inside chunks; flipped bytes in every region of every chunk; reordered, dropped, duplicated and appended chunks; blobs moved between attachments and vaults; size mismatches; missing blobs; no export file left behind after any failure or cancellation.
 
 ## Related documents
 

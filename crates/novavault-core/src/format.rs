@@ -25,6 +25,8 @@
 //! seal AD   = header ‖ 0x02 ‖ slot table ‖ records
 //! ```
 //!
+//! (Attachment chunks use the context byte `0x03`; see `attachment`.)
+//!
 //! This module only frames and checks bytes; unlocking and decryption are
 //! done by the vault. Parsing is bounds-checked before every allocation.
 
@@ -297,7 +299,7 @@ mod tests {
         let params =
             KdfParams::new(KdfParams::MIN_MEMORY_KIB, KdfParams::MIN_ITERATIONS, 1).unwrap();
         let password = SecretSlice::from(b"pw".to_vec());
-        let (slots, key, _) = KeySlots::create(&password, params, &header.to_bytes()).unwrap();
+        let (slots, key, _) = KeySlots::create(&password, params, &header.slot_ad()).unwrap();
         let mut records: Vec<RecordEnvelope> = (1u8..=3)
             .map(|n| {
                 let id = ItemId::from_bytes([n; ITEM_ID_LEN]);

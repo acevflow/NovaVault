@@ -137,6 +137,15 @@ pub enum VaultError {
         reason: &'static str,
     },
 
+    /// The item has no attachment with the requested identifier.
+    #[error("attachment not found")]
+    AttachmentNotFound,
+
+    /// A long operation (adding or exporting an attachment) was stopped by
+    /// its caller before it finished. Nothing was changed.
+    #[error("operation cancelled")]
+    Cancelled,
+
     /// A cryptographic operation failed outside of unlocking.
     #[error(transparent)]
     Crypto(#[from] CryptoError),

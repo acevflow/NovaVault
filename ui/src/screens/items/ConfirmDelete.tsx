@@ -2,10 +2,33 @@ import { useEffect, useId, useRef } from 'react';
 
 import { Button } from '../../components/Button';
 
+/** What {@link ConfirmDelete} deletes. */
+export type DeleteSubject = 'item' | 'attachment';
+
+const WORDING: Record<
+  DeleteSubject,
+  { heading: string; consequence: string; action: string; busy: string }
+> = {
+  item: {
+    heading: 'Delete this item?',
+    consequence: 'will be deleted from the vault',
+    action: 'Delete',
+    busy: 'Deleting…',
+  },
+  attachment: {
+    heading: 'Remove this attachment?',
+    consequence: 'will be removed from this item and its encrypted copy deleted',
+    action: 'Remove',
+    busy: 'Removing…',
+  },
+};
+
 /** Props of {@link ConfirmDelete}. */
 export interface ConfirmDeleteProps {
-  /** Title of the item to delete, quoted in the question. */
+  /** Title of the item (or name of the file) to delete, quoted in the question. */
   readonly title: string;
+  /** What is deleted; `item` by default. */
+  readonly subject?: DeleteSubject;
   /** Whether the deletion is in progress. */
   readonly busy: boolean;
   /** Deletes the item. */
@@ -20,7 +43,14 @@ export interface ConfirmDeleteProps {
  * Focus starts on Cancel, so pressing Enter by reflex keeps the item, and
  * Escape cancels.
  */
-export function ConfirmDelete({ title, busy, onConfirm, onCancel }: ConfirmDeleteProps) {
+export function ConfirmDelete({
+  title,
+  subject = 'item',
+  busy,
+  onConfirm,
+  onCancel,
+}: ConfirmDeleteProps) {
+  const wording = WORDING[subject];
   const headingId = useId();
   const messageId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -50,14 +80,14 @@ export function ConfirmDelete({ title, busy, onConfirm, onCancel }: ConfirmDelet
       className="confirm"
     >
       <h3 id={headingId} className="confirm__heading">
-        Delete this item?
+        {wording.heading}
       </h3>
       <p id={messageId}>
-        “{title || 'Untitled'}” will be deleted from the vault. This cannot be undone.
+        “{title || 'Untitled'}” {wording.consequence}. This cannot be undone.
       </p>
       <div className="actions">
         <Button variant="danger" busy={busy} onClick={onConfirm}>
-          {busy ? 'Deleting…' : 'Delete'}
+          {busy ? wording.busy : wording.action}
         </Button>
         <Button ref={cancelRef} disabled={busy} onClick={onCancel}>
           Cancel

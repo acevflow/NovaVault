@@ -9,25 +9,49 @@
 //! generates one permission per command, and
 //! `capabilities/default.json` grants exactly those, so anything else is
 //! rejected by Tauri before it reaches Rust code.
+//!
+//! # Attachments
+//!
+//! The attachment commands open the native file dialog themselves, in Rust,
+//! so the UI never sends a file system path (a compromised webview cannot
+//! make the shell read or write a file the user did not pick) and never
+//! receives one. The dialog is shown *before* the session is locked for the
+//! transfer, so an open dialog never holds up the auto-lock. The transfer
+//! then runs with the session locked, reporting progress over a channel.
+//! Locking the vault by hand or on an OS event asks a running transfer to
+//! stop at its next chunk (see [`AppState::with_session_interrupting_transfers`]).
 
+use std::ops::ControlFlow;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use secrecy::SecretString;
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::clipboard::ClipboardManager;
 use crate::dto::{
-    CopyResultDto, Credential, ItemDetailsDto, ItemField, ItemInput, ItemSummaryDto, ItemUpdate,
-    RecoveryCodeDto, RevealedValueDto, VaultStatusDto,
+    AttachmentDto, CopyResultDto, Credential, ItemDetailsDto, ItemField, ItemInput, ItemSummaryDto,
+    ItemUpdate, RecoveryCodeDto, RevealedValueDto, TransferProgressDto, VaultStatusDto,
 };
 use crate::error::{CommandError, CommandResult};
 use crate::session::Session;
 use crate::settings::Settings;
 
+/// Minimum time between two progress messages, so a fast transfer does
+/// not flood the webview.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+
 /// Shared app state: the single vault session.
 pub struct AppState {
     session: Mutex<Session>,
+    /// Set while a lock request waits for the session, so a running
+    /// attachment transfer stops at its next chunk instead of delaying the
+    /// lock until it finishes.
+    interrupt_transfer: AtomicBool,
 }
 
 impl AppState {
@@ -35,7 +59,26 @@ impl AppState {
     pub fn new(session: Session) -> Self {
         Self {
             session: Mutex::new(session),
+            interrupt_transfer: AtomicBool::new(false),
         }
+    }
+
+    /// Like [`AppState::with_session`], but first asks a running
+    /// attachment transfer to stop, so `action` (a lock) runs within one
+    /// chunk's time rather than after the whole transfer.
+    pub fn with_session_interrupting_transfers<T>(
+        &self,
+        action: impl FnOnce(&mut Session) -> T,
+    ) -> T {
+        self.interrupt_transfer.store(true, Ordering::SeqCst);
+        let result = self.with_session(action);
+        self.interrupt_transfer.store(false, Ordering::SeqCst);
+        result
+    }
+
+    /// Whether a lock request is waiting for a transfer to stop.
+    fn transfer_interrupted(&self) -> bool {
+        self.interrupt_transfer.load(Ordering::SeqCst)
     }
 
     /// Runs `action` with exclusive access to the session.
@@ -86,15 +129,17 @@ pub async fn unlock(app: AppHandle, credential: Credential) -> CommandResult<()>
 }
 
 /// Locks the vault, wiping the vault key from memory, and clears a copied
-/// field from the clipboard.
+/// field from the clipboard. A running attachment transfer is stopped.
 #[tauri::command]
 pub async fn lock(app: AppHandle) -> CommandResult<()> {
     app.state::<ClipboardManager>().clear();
-    run(app, |session| {
-        session.lock();
-        Ok(())
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<AppState>()
+            .with_session_interrupting_transfers(Session::lock)
     })
     .await
+    .map_err(|_| CommandError::Internal)?;
+    Ok(())
 }
 
 /// Changes the master password of the unlocked vault, after checking the
@@ -211,4 +256,160 @@ pub async fn update_item(app: AppHandle, id: String, item: ItemUpdate) -> Comman
 #[tauri::command]
 pub async fn delete_item(app: AppHandle, id: String) -> CommandResult<()> {
     run(app, move |session| session.delete_item(&id)).await
+}
+
+/// Asks the user for a file and attaches it to item `item_id`.
+///
+/// Returns the new attachment, or `None` if the user closed the dialog.
+/// Progress is reported on `on_progress`.
+#[tauri::command]
+pub async fn add_attachment(
+    app: AppHandle,
+    item_id: String,
+    on_progress: Channel<TransferProgressDto>,
+) -> CommandResult<Option<AttachmentDto>> {
+    // Fail before showing a dialog if the vault is locked or the item gone.
+    let id = item_id.clone();
+    run(app.clone(), move |session| session.check_item(&id)).await?;
+    let Some(source) = pick_file(app.clone()).await? else {
+        return Ok(None);
+    };
+    let reporter_app = app.clone();
+    run(app, move |session| {
+        // Only for the progress bar: the size actually encrypted is
+        // whatever the file holds when it is read.
+        let total = std::fs::metadata(&source).map_or(0, |metadata| metadata.len());
+        let mut reporter = ProgressReporter::new(reporter_app, on_progress, total);
+        let result = session.add_attachment(&item_id, &source, |done| reporter.report(done));
+        // The transfer was activity: do not count its duration as idle.
+        session.touch(Instant::now());
+        result.map(Some)
+    })
+    .await
+}
+
+/// Asks the user where to save attachment `attachment_id` of item
+/// `item_id`, suggesting its file name, and decrypts it there.
+///
+/// Returns `false` if the user closed the dialog. Progress is reported on
+/// `on_progress`.
+#[tauri::command]
+pub async fn export_attachment(
+    app: AppHandle,
+    item_id: String,
+    attachment_id: String,
+    on_progress: Channel<TransferProgressDto>,
+) -> CommandResult<bool> {
+    let (item, attachment) = (item_id.clone(), attachment_id.clone());
+    let (name, size) = run(app.clone(), move |session| {
+        session.attachment_info(&item, &attachment)
+    })
+    .await?;
+    let Some(destination) = save_file(app.clone(), name).await? else {
+        return Ok(false);
+    };
+    let reporter_app = app.clone();
+    run(app, move |session| {
+        let mut reporter = ProgressReporter::new(reporter_app, on_progress, size);
+        let result = session.export_attachment(&item_id, &attachment_id, &destination, |done| {
+            reporter.report(done)
+        });
+        session.touch(Instant::now());
+        result.map(|()| true)
+    })
+    .await
+}
+
+/// Removes attachment `attachment_id` from item `item_id` and deletes its
+/// encrypted data.
+#[tauri::command]
+pub async fn delete_attachment(
+    app: AppHandle,
+    item_id: String,
+    attachment_id: String,
+) -> CommandResult<()> {
+    run(app, move |session| {
+        session.delete_attachment(&item_id, &attachment_id)
+    })
+    .await
+}
+
+/// Shows the native "open file" dialog on a blocking thread. The session
+/// is not locked meanwhile, so the auto-lock keeps working.
+async fn pick_file(app: AppHandle) -> CommandResult<Option<PathBuf>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = app.dialog().file().set_title("Attach a file");
+        if let Some(window) = app.get_webview_window("main") {
+            dialog = dialog.set_parent(&window);
+        }
+        dialog.blocking_pick_file().map(|path| path.into_path())
+    })
+    .await
+    .map_err(|_| CommandError::Internal)?
+    .transpose()
+    .map_err(|_| CommandError::FileAccess)
+}
+
+/// Shows the native "save file" dialog, suggesting `file_name`, on a
+/// blocking thread. The dialog asks before replacing an existing file.
+async fn save_file(app: AppHandle, file_name: String) -> CommandResult<Option<PathBuf>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = app
+            .dialog()
+            .file()
+            .set_title("Export attachment")
+            .set_file_name(file_name);
+        if let Some(window) = app.get_webview_window("main") {
+            dialog = dialog.set_parent(&window);
+        }
+        dialog.blocking_save_file().map(|path| path.into_path())
+    })
+    .await
+    .map_err(|_| CommandError::Internal)?
+    .transpose()
+    .map_err(|_| CommandError::FileAccess)
+}
+
+/// Forwards transfer progress to the UI, throttled, and stops the transfer
+/// when a lock is waiting.
+struct ProgressReporter {
+    app: AppHandle,
+    channel: Channel<TransferProgressDto>,
+    total: u64,
+    last_sent: Option<Instant>,
+}
+
+impl ProgressReporter {
+    fn new(app: AppHandle, channel: Channel<TransferProgressDto>, total: u64) -> Self {
+        Self {
+            app,
+            channel,
+            total,
+            last_sent: None,
+        }
+    }
+
+    /// Called by the core after each chunk with the bytes done so far.
+    fn report(&mut self, done: u64) -> ControlFlow<()> {
+        if self.app.state::<AppState>().transfer_interrupted() {
+            return ControlFlow::Break(());
+        }
+        let now = Instant::now();
+        let due = self
+            .last_sent
+            .is_none_or(|last| now.saturating_duration_since(last) >= PROGRESS_INTERVAL);
+        if due || done >= self.total {
+            // A file that grew while it was read reports more than its
+            // initial size; never send a total below the bytes done.
+            let progress = TransferProgressDto {
+                done,
+                total: self.total.max(done),
+            };
+            // Progress is cosmetic: a closed channel must not fail the
+            // transfer.
+            let _ = self.channel.send(progress);
+            self.last_sent = Some(now);
+        }
+        ControlFlow::Continue(())
+    }
 }

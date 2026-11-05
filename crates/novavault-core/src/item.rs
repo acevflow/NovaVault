@@ -1,10 +1,11 @@
 //! The vault's items: passwords, notes and secrets.
 //!
 //! Every item has a random [`ItemId`], a title, creation and update
-//! timestamps and type-specific fields. Only the identifier and the
-//! [`ItemKind`] are stored in plaintext; the title, timestamps and fields
-//! form the item's payload, which is encrypted as a whole by the
-//! [`crate::vault`].
+//! timestamps, type-specific fields and a list of file [`Attachment`]s.
+//! Only the identifier and the [`ItemKind`] are stored in plaintext; the
+//! title, timestamps, fields and attachment metadata form the item's
+//! payload, which is encrypted as a whole by the [`crate::vault`]. The
+//! attachments' contents are stored separately (see [`crate::attachment`]).
 //!
 //! # Payload encoding
 //!
@@ -12,12 +13,17 @@
 //! that many UTF-8 bytes.
 //!
 //! ```text
-//! created_at_ms u64 ‖ updated_at_ms u64 ‖ title str ‖ fields… ‖ zero padding
+//! created_at_ms u64 ‖ updated_at_ms u64 ‖ title str ‖ fields…
+//!     ‖ attachment_count u32 ‖ attachment… ‖ zero padding
 //!
-//! password: username str ‖ password str ‖ url str ‖ notes str
-//! note:     body str
-//! secret:   value str ‖ notes str
+//! password:   username str ‖ password str ‖ url str ‖ notes str
+//! note:       body str
+//! secret:     value str ‖ notes str
+//! attachment: attachment_id (16) ‖ size u64 ‖ added_at_ms u64 ‖ name str
 //! ```
+//!
+//! Format version 0 payloads have no attachment count or attachments; they
+//! are decoded only to migrate a version 0 vault.
 //!
 //! The payload is padded with zero bytes to a multiple of [`PAD_BLOCK`]
 //! bytes, so the ciphertext length reveals only a coarse size bucket, not
@@ -39,6 +45,15 @@ use crate::error::{CryptoError, Result, VaultError, VaultResult};
 /// Length in bytes of an [`ItemId`].
 pub const ITEM_ID_LEN: usize = 16;
 
+/// Length in bytes of an [`AttachmentId`].
+pub const ATTACHMENT_ID_LEN: usize = 16;
+
+/// Largest number of attachments on one item.
+pub const MAX_ATTACHMENTS_PER_ITEM: usize = 1000;
+
+/// Longest attachment file name, in bytes of UTF-8.
+pub const MAX_ATTACHMENT_NAME_LEN: usize = 255;
+
 /// Payloads are padded to a multiple of this many bytes.
 pub const PAD_BLOCK: usize = 64;
 
@@ -51,46 +66,92 @@ pub const MAX_PAYLOAD_LEN: usize = 1024 * 1024;
 /// Length of the two timestamps at the start of a payload.
 const TIMESTAMPS_LEN: usize = 2 * 8;
 
-/// Random identifier of an item, unique within its vault. Not secret.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ItemId([u8; ITEM_ID_LEN]);
+/// Defines a random 16-byte identifier type: generation from the OS
+/// CSPRNG, byte access, strict hexadecimal parsing and lower-case
+/// hexadecimal `Display`.
+macro_rules! random_id {
+    ($(#[$doc:meta])* $name:ident, $len:ident) => {
+        $(#[$doc])*
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name([u8; $len]);
 
-impl ItemId {
-    /// Generates a new random identifier from the OS CSPRNG.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CryptoError::Random`] if the OS random number generator fails.
-    pub fn generate() -> Result<Self> {
-        let mut bytes = [0u8; ITEM_ID_LEN];
-        getrandom::fill(&mut bytes).map_err(|_| CryptoError::Random)?;
-        Ok(Self(bytes))
-    }
+        impl $name {
+            /// Generates a new random identifier from the OS CSPRNG.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`CryptoError::Random`] if the OS random number
+            /// generator fails.
+            pub fn generate() -> Result<Self> {
+                let mut bytes = [0u8; $len];
+                getrandom::fill(&mut bytes).map_err(|_| CryptoError::Random)?;
+                Ok(Self(bytes))
+            }
 
-    /// Builds an identifier from its bytes.
-    pub const fn from_bytes(bytes: [u8; ITEM_ID_LEN]) -> Self {
-        Self(bytes)
-    }
+            /// Builds an identifier from its bytes.
+            pub const fn from_bytes(bytes: [u8; $len]) -> Self {
+                Self(bytes)
+            }
 
-    /// The identifier's bytes.
-    pub const fn as_bytes(&self) -> &[u8; ITEM_ID_LEN] {
-        &self.0
-    }
-}
+            /// The identifier's bytes.
+            pub const fn as_bytes(&self) -> &[u8; $len] {
+                &self.0
+            }
 
-impl core::fmt::Display for ItemId {
-    /// Formats the identifier as 32 lower-case hexadecimal digits.
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for byte in self.0 {
-            write!(f, "{byte:02x}")?;
+            /// Parses the identifier from exactly 32 hexadecimal digits, in
+            /// either case. Returns `None` for anything else, including
+            /// signs and whitespace.
+            pub fn from_hex(text: &str) -> Option<Self> {
+                let digits = text.as_bytes();
+                if digits.len() != 2 * $len {
+                    return None;
+                }
+                let mut bytes = [0u8; $len];
+                for (byte, pair) in bytes.iter_mut().zip(digits.chunks_exact(2)) {
+                    *byte = hex_digit(pair[0])? << 4 | hex_digit(pair[1])?;
+                }
+                Some(Self(bytes))
+            }
         }
-        Ok(())
-    }
+
+        impl core::fmt::Display for $name {
+            /// Formats the identifier as 32 lower-case hexadecimal digits.
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                for byte in self.0 {
+                    write!(f, "{byte:02x}")?;
+                }
+                Ok(())
+            }
+        }
+
+        impl core::fmt::Debug for $name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                write!(f, concat!(stringify!($name), "({})"), self)
+            }
+        }
+    };
 }
 
-impl core::fmt::Debug for ItemId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "ItemId({self})")
+random_id!(
+    /// Random identifier of an item, unique within its vault. Not secret.
+    ItemId,
+    ITEM_ID_LEN
+);
+
+random_id!(
+    /// Random identifier of an attachment, unique within its vault. Not
+    /// secret: it names the attachment's encrypted file on disk.
+    AttachmentId,
+    ATTACHMENT_ID_LEN
+);
+
+/// Value of one ASCII hexadecimal digit, in either case.
+const fn hex_digit(digit: u8) -> Option<u8> {
+    match digit {
+        b'0'..=b'9' => Some(digit - b'0'),
+        b'a'..=b'f' => Some(digit - b'a' + 10),
+        b'A'..=b'F' => Some(digit - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -202,12 +263,88 @@ impl ItemContent {
     }
 }
 
-/// A decrypted item: identifier, timestamps and content.
+/// Metadata of one file attached to an item.
+///
+/// The file's contents are stored encrypted outside the vault file (see
+/// [`crate::attachment`]); this metadata lives in the item's encrypted
+/// payload, so names and sizes are never stored in plaintext.
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+pub struct Attachment {
+    #[zeroize(skip)]
+    id: AttachmentId,
+    name: String,
+    size: u64,
+    added_at_ms: u64,
+}
+
+impl Attachment {
+    /// Assembles attachment metadata. Crate-internal: the vault assigns
+    /// identifiers and measures sizes while encrypting.
+    pub(crate) const fn new(id: AttachmentId, name: String, size: u64, added_at_ms: u64) -> Self {
+        Self {
+            id,
+            name,
+            size,
+            added_at_ms,
+        }
+    }
+
+    /// The attachment's identifier.
+    pub const fn id(&self) -> AttachmentId {
+        self.id
+    }
+
+    /// The original file name (no directory part).
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The file's size in bytes.
+    pub const fn size(&self) -> u64 {
+        self.size
+    }
+
+    /// When the file was attached, in milliseconds since the Unix epoch
+    /// (UTC).
+    pub const fn added_at_ms(&self) -> u64 {
+        self.added_at_ms
+    }
+}
+
+/// Checks that `name` is usable as an attachment's file name: 1 to
+/// [`MAX_ATTACHMENT_NAME_LEN`] bytes, no path separators, no control
+/// characters, and not `.` or `..`.
+///
+/// The name is suggested again when the file is exported, so it must never
+/// be able to point outside the directory the user picks.
+///
+/// # Errors
+///
+/// [`VaultError::InvalidItem`] if the name is not acceptable.
+pub fn validate_attachment_name(name: &str) -> VaultResult<()> {
+    let valid = !name.is_empty()
+        && name.len() <= MAX_ATTACHMENT_NAME_LEN
+        && name != "."
+        && name != ".."
+        && !name
+            .chars()
+            .any(|c| c == '/' || c == '\\' || c.is_control());
+    if valid {
+        Ok(())
+    } else {
+        Err(VaultError::InvalidItem {
+            reason: "invalid attachment name",
+        })
+    }
+}
+
+/// A decrypted item: identifier, timestamps, content and attachments.
 pub struct Item {
     id: ItemId,
     created_at_ms: u64,
     updated_at_ms: u64,
     content: ItemContent,
+    attachments: Vec<Attachment>,
 }
 
 impl Item {
@@ -218,13 +355,26 @@ impl Item {
         created_at_ms: u64,
         updated_at_ms: u64,
         content: ItemContent,
+        attachments: Vec<Attachment>,
     ) -> Self {
         Self {
             id,
             created_at_ms,
             updated_at_ms,
             content,
+            attachments,
         }
+    }
+
+    /// The files attached to the item, in the order they were added.
+    pub fn attachments(&self) -> &[Attachment] {
+        &self.attachments
+    }
+
+    /// Splits the item into its content and attachments. Crate-internal:
+    /// used to re-encrypt an item with changed attachments.
+    pub(crate) fn into_parts(self) -> (ItemContent, Vec<Attachment>) {
+        (self.content, self.attachments)
     }
 
     /// The item's identifier.
@@ -296,6 +446,14 @@ macro_rules! redacted_debug {
 }
 redacted_debug!(PasswordItem, NoteItem, SecretItem);
 
+impl core::fmt::Debug for Attachment {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Attachment")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
+    }
+}
+
 impl core::fmt::Debug for ItemContent {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -311,6 +469,7 @@ impl core::fmt::Debug for Item {
         f.debug_struct("Item")
             .field("id", &self.id)
             .field("kind", &self.content.kind())
+            .field("attachments", &self.attachments.len())
             .finish_non_exhaustive()
     }
 }
@@ -343,21 +502,48 @@ fn fields(content: &ItemContent) -> Vec<&str> {
     }
 }
 
-/// Encodes an item's payload (timestamps and fields), padded to
-/// [`PAD_BLOCK`].
+/// A decoded payload.
+pub(crate) struct Payload {
+    /// Creation time, milliseconds since the Unix epoch.
+    pub(crate) created_at_ms: u64,
+    /// Last update time, milliseconds since the Unix epoch.
+    pub(crate) updated_at_ms: u64,
+    /// The item's fields.
+    pub(crate) content: ItemContent,
+    /// The item's attachments (always empty in format version 0).
+    pub(crate) attachments: Vec<Attachment>,
+}
+
+/// Fixed-size part of an encoded attachment: identifier, size and time.
+const ATTACHMENT_FIXED_LEN: usize = ATTACHMENT_ID_LEN + 8 + 8;
+
+/// Encodes an item's payload (timestamps, fields and, from format version
+/// 1, attachments) for format `version`, padded to [`PAD_BLOCK`].
 ///
 /// # Errors
 ///
 /// Returns [`VaultError::InvalidItem`] if the padded payload would exceed
-/// [`MAX_PAYLOAD_LEN`].
+/// [`MAX_PAYLOAD_LEN`], if an attachment name is invalid, if there are more
+/// than [`MAX_ATTACHMENTS_PER_ITEM`] attachments, or if attachments are
+/// given for format version 0, which cannot store them.
 pub(crate) fn encode_payload(
+    version: u16,
     created_at_ms: u64,
     updated_at_ms: u64,
     content: &ItemContent,
+    attachments: &[Attachment],
 ) -> VaultResult<Zeroizing<Vec<u8>>> {
     const TOO_LARGE: VaultError = VaultError::InvalidItem {
         reason: "item is too large",
     };
+    let with_attachments = version >= 1;
+    if attachments.len() > MAX_ATTACHMENTS_PER_ITEM
+        || (!with_attachments && !attachments.is_empty())
+    {
+        return Err(VaultError::InvalidItem {
+            reason: "too many attachments",
+        });
+    }
     let fields = fields(content);
     let mut len = TIMESTAMPS_LEN;
     for field in &fields {
@@ -365,6 +551,15 @@ pub(crate) fn encode_payload(
             return Err(TOO_LARGE);
         }
         len = len.checked_add(4 + field.len()).ok_or(TOO_LARGE)?;
+    }
+    if with_attachments {
+        len = len.checked_add(4).ok_or(TOO_LARGE)?;
+        for attachment in attachments {
+            validate_attachment_name(&attachment.name)?;
+            len = len
+                .checked_add(ATTACHMENT_FIXED_LEN + 4 + attachment.name.len())
+                .ok_or(TOO_LARGE)?;
+        }
     }
     let padded_len = len.div_ceil(PAD_BLOCK) * PAD_BLOCK;
     if padded_len > MAX_PAYLOAD_LEN {
@@ -382,22 +577,33 @@ pub(crate) fn encode_payload(
         payload.extend_from_slice(&field_len.to_le_bytes());
         payload.extend_from_slice(field.as_bytes());
     }
+    if with_attachments {
+        // Both bounds were checked above.
+        let count = u32::try_from(attachments.len()).map_err(|_| TOO_LARGE)?;
+        payload.extend_from_slice(&count.to_le_bytes());
+        for attachment in attachments {
+            let name_len = u32::try_from(attachment.name.len()).map_err(|_| TOO_LARGE)?;
+            payload.extend_from_slice(attachment.id.as_bytes());
+            payload.extend_from_slice(&attachment.size.to_le_bytes());
+            payload.extend_from_slice(&attachment.added_at_ms.to_le_bytes());
+            payload.extend_from_slice(&name_len.to_le_bytes());
+            payload.extend_from_slice(attachment.name.as_bytes());
+        }
+    }
     payload.resize(padded_len, 0);
     Ok(payload)
 }
 
-/// Decodes a payload produced by [`encode_payload`] for an item of `kind`.
-///
-/// Returns `(created_at_ms, updated_at_ms, content)`.
+/// Decodes a payload produced by [`encode_payload`] for an item of `kind`
+/// in format `version`.
 ///
 /// # Errors
 ///
 /// Returns [`VaultError::Corrupted`] if the payload is truncated, has a
-/// field out of bounds or not valid UTF-8, or has invalid padding.
-pub(crate) fn decode_payload(
-    kind: ItemKind,
-    payload: &[u8],
-) -> VaultResult<(u64, u64, ItemContent)> {
+/// field out of bounds or not valid UTF-8, has too many attachments, an
+/// invalid attachment name or a repeated attachment identifier, or has
+/// invalid padding.
+pub(crate) fn decode_payload(version: u16, kind: ItemKind, payload: &[u8]) -> VaultResult<Payload> {
     let mut reader = Reader(payload);
     let created_at_ms = reader.u64()?;
     let updated_at_ms = reader.u64()?;
@@ -420,8 +626,18 @@ pub(crate) fn decode_payload(
             notes: reader.secret()?,
         }),
     };
+    let attachments = if version >= 1 {
+        reader.attachments()?
+    } else {
+        Vec::new()
+    };
     reader.padding(payload.len())?;
-    Ok((created_at_ms, updated_at_ms, content))
+    Ok(Payload {
+        created_at_ms,
+        updated_at_ms,
+        content,
+        attachments,
+    })
 }
 
 /// Bounds-checked cursor over a payload.
@@ -441,10 +657,38 @@ impl Reader<'_> {
         Ok(head)
     }
 
+    fn array<const N: usize>(&mut self) -> VaultResult<[u8; N]> {
+        self.take(N)?.try_into().map_err(|_| Self::MALFORMED)
+    }
+
     fn u64(&mut self) -> VaultResult<u64> {
-        let bytes = self.take(8)?;
-        let bytes: [u8; 8] = bytes.try_into().map_err(|_| Self::MALFORMED)?;
-        Ok(u64::from_le_bytes(bytes))
+        self.array().map(u64::from_le_bytes)
+    }
+
+    fn u32(&mut self) -> VaultResult<u32> {
+        self.array().map(u32::from_le_bytes)
+    }
+
+    fn attachments(&mut self) -> VaultResult<Vec<Attachment>> {
+        let count = usize::try_from(self.u32()?).map_err(|_| Self::MALFORMED)?;
+        if count > MAX_ATTACHMENTS_PER_ITEM {
+            return Err(Self::MALFORMED);
+        }
+        // `count` is bounded above, so pre-allocating is safe.
+        let mut attachments: Vec<Attachment> = Vec::with_capacity(count);
+        for _ in 0..count {
+            let id = AttachmentId::from_bytes(self.array()?);
+            let size = self.u64()?;
+            let added_at_ms = self.u64()?;
+            let name = self.string()?;
+            if validate_attachment_name(&name).is_err()
+                || attachments.iter().any(|existing| existing.id == id)
+            {
+                return Err(Self::MALFORMED);
+            }
+            attachments.push(Attachment::new(id, name, size, added_at_ms));
+        }
+        Ok(attachments)
     }
 
     fn str(&mut self) -> VaultResult<&str> {
@@ -476,6 +720,7 @@ impl Reader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::header::FORMAT_VERSION;
 
     fn s(text: &str) -> SecretString {
         SecretString::from(text)
@@ -506,24 +751,72 @@ mod tests {
         })
     }
 
+    fn attachment(byte: u8, name: &str) -> Attachment {
+        Attachment::new(
+            AttachmentId::from_bytes([byte; ATTACHMENT_ID_LEN]),
+            name.into(),
+            u64::from(byte) * 1000,
+            u64::from(byte),
+        )
+    }
+
+    fn encode(content: &ItemContent, attachments: &[Attachment]) -> Zeroizing<Vec<u8>> {
+        encode_payload(FORMAT_VERSION, 1, 2, content, attachments).unwrap()
+    }
+
+    fn decode(kind: ItemKind, payload: &[u8]) -> VaultResult<Payload> {
+        decode_payload(FORMAT_VERSION, kind, payload)
+    }
+
     fn hex(bytes: &[u8]) -> String {
         bytes.iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
-    /// Payload of a note titled "t" with body "b", created at 1 ms and
-    /// updated at 2 ms, as published in docs/vault-format.md.
+    fn padded(hex: &str) -> String {
+        let mut padded = hex.to_owned();
+        let len = hex.len() / 2;
+        padded.push_str(&"00".repeat(len.div_ceil(PAD_BLOCK) * PAD_BLOCK - len));
+        padded
+    }
+
+    /// Format version 0 payload of a note titled "t" with body "b", created
+    /// at 1 ms and updated at 2 ms, as published in docs/vault-format.md.
     #[test]
-    fn known_note_encoding() {
-        let payload = encode_payload(1, 2, &note_item()).unwrap();
+    fn known_note_encoding_v0() {
+        let payload = encode_payload(0, 1, 2, &note_item(), &[]).unwrap();
         let expected = concat!(
             "0100000000000000", // created_at_ms = 1
             "0200000000000000", // updated_at_ms = 2
             "0100000074",       // title "t"
             "0100000062",       // body "b"
         );
-        let mut expected = expected.to_owned();
-        expected.push_str(&"00".repeat(PAD_BLOCK - 26));
-        assert_eq!(hex(&payload), expected);
+        assert_eq!(hex(&payload), padded(expected));
+    }
+
+    /// The same note in format version 1, with one attachment, as
+    /// published in docs/vault-format.md.
+    #[test]
+    fn known_note_encoding_v1() {
+        let file = Attachment::new(
+            AttachmentId::from_bytes([0xAA; ATTACHMENT_ID_LEN]),
+            "a.txt".into(),
+            3,
+            4,
+        );
+        let payload = encode(&note_item(), &[file]);
+        let expected = concat!(
+            "0100000000000000",                 // created_at_ms = 1
+            "0200000000000000",                 // updated_at_ms = 2
+            "0100000074",                       // title "t"
+            "0100000062",                       // body "b"
+            "01000000",                         // attachment_count = 1
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // attachment_id
+            "0300000000000000",                 // size = 3
+            "0400000000000000",                 // added_at_ms = 4
+            "05000000612e747874",               // name "a.txt"
+        );
+        assert_eq!(payload.len(), 2 * PAD_BLOCK);
+        assert_eq!(hex(&payload), padded(expected));
     }
 
     fn assert_same(a: &ItemContent, b: &ItemContent) {
@@ -533,13 +826,131 @@ mod tests {
 
     #[test]
     fn round_trips_every_kind() {
-        for content in [password_item(), note_item(), secret_item()] {
-            let payload = encode_payload(1_700_000_000_000, u64::MAX, &content).unwrap();
-            assert_eq!(payload.len() % PAD_BLOCK, 0);
-            let (created, updated, decoded) = decode_payload(content.kind(), &payload).unwrap();
-            assert_eq!(created, 1_700_000_000_000);
-            assert_eq!(updated, u64::MAX);
-            assert_same(&decoded, &content);
+        for version in [0, FORMAT_VERSION] {
+            for content in [password_item(), note_item(), secret_item()] {
+                let payload =
+                    encode_payload(version, 1_700_000_000_000, u64::MAX, &content, &[]).unwrap();
+                assert_eq!(payload.len() % PAD_BLOCK, 0);
+                let decoded = decode_payload(version, content.kind(), &payload).unwrap();
+                assert_eq!(decoded.created_at_ms, 1_700_000_000_000);
+                assert_eq!(decoded.updated_at_ms, u64::MAX);
+                assert_same(&decoded.content, &content);
+                assert!(decoded.attachments.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn attachments_round_trip_in_order() {
+        let files = [attachment(3, "scan.pdf"), attachment(1, "photo ✓.jpg")];
+        let payload = encode(&password_item(), &files);
+        let decoded = decode(ItemKind::Password, &payload).unwrap();
+        assert_same(&decoded.content, &password_item());
+        let got: Vec<(AttachmentId, &str, u64, u64)> = decoded
+            .attachments
+            .iter()
+            .map(|a| (a.id(), a.name(), a.size(), a.added_at_ms()))
+            .collect();
+        let want: Vec<(AttachmentId, &str, u64, u64)> = files
+            .iter()
+            .map(|a| (a.id(), a.name(), a.size(), a.added_at_ms()))
+            .collect();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn version_zero_cannot_hold_attachments() {
+        assert!(matches!(
+            encode_payload(0, 0, 0, &note_item(), &[attachment(1, "a")]),
+            Err(VaultError::InvalidItem { .. })
+        ));
+    }
+
+    #[test]
+    fn attachment_limits_are_enforced() {
+        let too_many: Vec<Attachment> = (0..=MAX_ATTACHMENTS_PER_ITEM)
+            .map(|n| {
+                let mut id = [0u8; ATTACHMENT_ID_LEN];
+                id[..8].copy_from_slice(&(n as u64).to_le_bytes());
+                Attachment::new(AttachmentId::from_bytes(id), "f".into(), 0, 0)
+            })
+            .collect();
+        assert!(matches!(
+            encode_payload(FORMAT_VERSION, 0, 0, &note_item(), &too_many),
+            Err(VaultError::InvalidItem { .. })
+        ));
+        assert!(
+            encode_payload(
+                FORMAT_VERSION,
+                0,
+                0,
+                &note_item(),
+                &too_many[..MAX_ATTACHMENTS_PER_ITEM]
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            encode_payload(FORMAT_VERSION, 0, 0, &note_item(), &[attachment(1, "a/b")]),
+            Err(VaultError::InvalidItem { .. })
+        ));
+    }
+
+    #[test]
+    fn attachment_names_are_validated() {
+        for good in [
+            "a",
+            "report 2026.pdf",
+            "é✓.txt",
+            ".hidden",
+            &"x".repeat(255),
+        ] {
+            assert!(validate_attachment_name(good).is_ok(), "{good}");
+        }
+        for bad in [
+            "",
+            ".",
+            "..",
+            "a/b",
+            "a\\b",
+            "a\0b",
+            "line\nbreak",
+            &"x".repeat(256),
+        ] {
+            assert!(validate_attachment_name(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_attachment_sections() {
+        let payload = encode(&note_item(), &[attachment(1, "a"), attachment(2, "b")]);
+        // Layout: 16 timestamps, 5 title, 5 body, then the count.
+        let count_at = 26;
+        let first = count_at + 4;
+        let second = first + ATTACHMENT_FIXED_LEN + 4 + 1;
+
+        let mut too_many = payload.to_vec();
+        too_many[count_at..first]
+            .copy_from_slice(&(MAX_ATTACHMENTS_PER_ITEM as u32 + 1).to_le_bytes());
+        let mut duplicate = payload.to_vec();
+        duplicate[second..second + ATTACHMENT_ID_LEN].fill(1);
+        let mut bad_name = payload.to_vec();
+        bad_name[first + ATTACHMENT_FIXED_LEN + 4] = b'/';
+        let mut empty_name = payload.to_vec();
+        empty_name[first + ATTACHMENT_FIXED_LEN..first + ATTACHMENT_FIXED_LEN + 4]
+            .copy_from_slice(&0u32.to_le_bytes());
+        for (name, input) in [
+            ("count", too_many),
+            ("duplicate id", duplicate),
+            ("bad name", bad_name),
+            ("empty name", empty_name),
+        ] {
+            assert!(
+                matches!(
+                    decode(ItemKind::Note, &input),
+                    Err(VaultError::Corrupted { .. })
+                ),
+                "{name}"
+            );
         }
     }
 
@@ -553,22 +964,19 @@ mod tests {
             title: String::new(),
             body: s("a much longer note body"),
         });
-        assert_eq!(
-            encode_payload(0, 0, &short).unwrap().len(),
-            encode_payload(0, 0, &longer).unwrap().len()
-        );
+        assert_eq!(encode(&short, &[]).len(), encode(&longer, &[]).len());
     }
 
     #[test]
     fn exact_block_needs_no_padding() {
-        // 16 (timestamps) + 2 × 4 (lengths) + 40 = 64 bytes exactly.
+        // 16 (timestamps) + 2 × 4 (lengths) + 36 + 4 (count) = 64 bytes.
         let content = ItemContent::Note(NoteItem {
             title: String::new(),
-            body: s(&"x".repeat(40)),
+            body: s(&"x".repeat(36)),
         });
-        let payload = encode_payload(0, 0, &content).unwrap();
+        let payload = encode(&content, &[]);
         assert_eq!(payload.len(), PAD_BLOCK);
-        assert!(decode_payload(ItemKind::Note, &payload).is_ok());
+        assert!(decode(ItemKind::Note, &payload).is_ok());
     }
 
     #[test]
@@ -578,21 +986,21 @@ mod tests {
             body: s(&"x".repeat(MAX_PAYLOAD_LEN)),
         });
         assert!(matches!(
-            encode_payload(0, 0, &content),
+            encode_payload(FORMAT_VERSION, 0, 0, &content, &[]),
             Err(VaultError::InvalidItem { .. })
         ));
     }
 
     fn assert_malformed(kind: ItemKind, payload: &[u8]) {
         assert!(matches!(
-            decode_payload(kind, payload),
+            decode(kind, payload),
             Err(VaultError::Corrupted { .. })
         ));
     }
 
     #[test]
     fn rejects_malformed_payloads() {
-        let payload = encode_payload(1, 2, &note_item()).unwrap();
+        let payload = encode(&note_item(), &[attachment(1, "a")]);
 
         // Truncated anywhere.
         for len in 0..payload.len() {
@@ -603,7 +1011,8 @@ mod tests {
         extra.extend_from_slice(&[0u8; PAD_BLOCK]);
         assert_malformed(ItemKind::Note, &extra);
         let mut dirty = payload.to_vec();
-        dirty[PAD_BLOCK - 1] = 1;
+        let last = dirty.len() - 1;
+        dirty[last] = 1;
         assert_malformed(ItemKind::Note, &dirty);
         // A length pointing past the end.
         let mut long = payload.to_vec();
@@ -634,17 +1043,66 @@ mod tests {
     #[test]
     fn ids_are_random_and_hex_formatted() {
         assert_ne!(ItemId::generate().unwrap(), ItemId::generate().unwrap());
+        assert_ne!(
+            AttachmentId::generate().unwrap(),
+            AttachmentId::generate().unwrap()
+        );
         let id = ItemId::from_bytes([0xAB; ITEM_ID_LEN]);
         assert_eq!(id.to_string(), "ab".repeat(ITEM_ID_LEN));
+        assert_eq!(format!("{id:?}"), format!("ItemId({id})"));
+        let attachment = AttachmentId::from_bytes([0x01; ATTACHMENT_ID_LEN]);
+        assert_eq!(
+            format!("{attachment:?}"),
+            format!("AttachmentId({attachment})")
+        );
+    }
+
+    #[test]
+    fn ids_parse_from_strict_hex() {
+        let id = ItemId::generate().unwrap();
+        assert_eq!(ItemId::from_hex(&id.to_string()), Some(id));
+        assert_eq!(ItemId::from_hex(&id.to_string().to_uppercase()), Some(id));
+        let attachment = AttachmentId::generate().unwrap();
+        assert_eq!(
+            AttachmentId::from_hex(&attachment.to_string()),
+            Some(attachment)
+        );
+        for bad in [
+            "",
+            "abc",
+            &"g".repeat(32),
+            &"a".repeat(33),
+            &"+f".repeat(16),
+            &" a".repeat(16),
+            // Multi-byte UTF-8 of the right byte length.
+            &"é".repeat(16),
+        ] {
+            assert_eq!(ItemId::from_hex(bad), None, "{bad}");
+            assert_eq!(AttachmentId::from_hex(bad), None, "{bad}");
+        }
     }
 
     #[test]
     fn debug_shows_no_field_content() {
-        let item = Item::new(ItemId::from_bytes([0; ITEM_ID_LEN]), 0, 0, password_item());
-        let printed = format!("{item:?} {:?}", item.content());
-        for secret in ["Bank", "alice", "correct horse", "bank.example", "PIN"] {
+        let item = Item::new(
+            ItemId::from_bytes([0; ITEM_ID_LEN]),
+            0,
+            0,
+            password_item(),
+            vec![attachment(1, "tax-return.pdf")],
+        );
+        let printed = format!("{item:?} {:?} {:?}", item.content(), item.attachments());
+        for secret in [
+            "Bank",
+            "alice",
+            "correct horse",
+            "bank.example",
+            "PIN",
+            "tax-return",
+        ] {
             assert!(!printed.contains(secret), "{printed}");
         }
+        assert!(printed.contains("attachments: 1"), "{printed}");
         let summary = ItemSummary::from(item);
         assert_eq!(summary.title, "Bank");
         assert!(!format!("{summary:?}").contains("Bank"));

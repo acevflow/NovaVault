@@ -10,17 +10,18 @@
 //! reports [`CommandError::Storage`]; the edit stays in memory and is
 //! written by the next successful save.
 
-use std::fs;
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::ops::ControlFlow;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use novavault_core::{ItemContent, KdfParams, RecoveryCode, Vault};
+use novavault_core::{ItemContent, KdfParams, RecoveryCode, Vault, VaultError};
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
 use zeroize::Zeroizing;
 
 use crate::dto::{
-    Credential, ItemDetailsDto, ItemField, ItemInput, ItemSummaryDto, ItemUpdate, RecoveryCodeDto,
-    RevealedValueDto, VaultStatusDto, parse_item_id,
+    AttachmentDto, Credential, ItemDetailsDto, ItemField, ItemInput, ItemSummaryDto, ItemUpdate,
+    RecoveryCodeDto, RevealedValueDto, VaultStatusDto, parse_attachment_id, parse_item_id,
 };
 use crate::error::{CommandError, CommandResult};
 use crate::settings::Settings;
@@ -344,6 +345,118 @@ impl Session {
         Ok(())
     }
 
+    /// Checks that the vault is unlocked and item `id` exists, before a
+    /// file dialog is shown for it.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] or
+    /// [`CommandError::ItemNotFound`].
+    pub fn check_item(&self, id: &str) -> CommandResult<()> {
+        self.vault()?.get(parse_item_id(id)?)?;
+        Ok(())
+    }
+
+    /// The file name and size of attachment `attachment_id` of item
+    /// `item_id`, to suggest a name when exporting it.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`] for a
+    /// malformed identifier, [`CommandError::ItemNotFound`] or
+    /// [`CommandError::AttachmentNotFound`].
+    pub fn attachment_info(
+        &self,
+        item_id: &str,
+        attachment_id: &str,
+    ) -> CommandResult<(String, u64)> {
+        let attachment = self
+            .vault()?
+            .attachment(parse_item_id(item_id)?, parse_attachment_id(attachment_id)?)?;
+        Ok((attachment.name().to_owned(), attachment.size()))
+    }
+
+    /// Encrypts the file at `source` (picked by the user in a native
+    /// dialog, never sent by the UI) as a new attachment of item `item_id`,
+    /// saves, and returns the attachment. The attachment is named after the
+    /// file; a name that is not valid UTF-8 is stored with replacement
+    /// characters.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`],
+    /// [`CommandError::ItemNotFound`], [`CommandError::FileAccess`] if the
+    /// file cannot be read or the attachment written,
+    /// [`CommandError::InvalidItem`] if the name is unusable or the item
+    /// has too many attachments, [`CommandError::Cancelled`], or a save
+    /// failure.
+    pub fn add_attachment(
+        &mut self,
+        item_id: &str,
+        source: &Path,
+        progress: impl FnMut(u64) -> ControlFlow<()>,
+    ) -> CommandResult<AttachmentDto> {
+        let vault = self.vault_mut()?;
+        let id = parse_item_id(item_id)?;
+        let name = source
+            .file_name()
+            .ok_or(CommandError::InvalidInput)?
+            .to_string_lossy();
+        let mut file = File::open(source).map_err(|_| CommandError::FileAccess)?;
+        let attachment = vault
+            .add_attachment(id, &name, &mut file, progress)
+            .map_err(file_error)?;
+        vault.save()?;
+        Ok(AttachmentDto::from(&attachment))
+    }
+
+    /// Decrypts attachment `attachment_id` of item `item_id` to
+    /// `destination` (picked by the user in a native dialog). Nothing is
+    /// left at `destination` if the data fails authentication.
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`Session::attachment_info`],
+    /// [`CommandError::Corrupted`] if the encrypted data is missing or
+    /// damaged, [`CommandError::FileAccess`] if `destination` cannot be
+    /// written or is one of the vault's own files, or
+    /// [`CommandError::Cancelled`].
+    pub fn export_attachment(
+        &self,
+        item_id: &str,
+        attachment_id: &str,
+        destination: &Path,
+        progress: impl FnMut(u64) -> ControlFlow<()>,
+    ) -> CommandResult<()> {
+        let vault = self.vault()?;
+        let item = parse_item_id(item_id)?;
+        let attachment = parse_attachment_id(attachment_id)?;
+        vault
+            .export_attachment(item, attachment, destination, progress)
+            .map_err(|error| match error {
+                // The only invalid input left is a destination inside the
+                // vault's storage: report it as a file the shell will not
+                // write.
+                VaultError::InvalidItem { .. } => CommandError::FileAccess,
+                other => file_error(other),
+            })
+    }
+
+    /// Removes attachment `attachment_id` from item `item_id`, saves, and
+    /// deletes the attachment's encrypted data.
+    ///
+    /// # Errors
+    ///
+    /// [`CommandError::Locked`], [`CommandError::InvalidInput`],
+    /// [`CommandError::ItemNotFound`], [`CommandError::AttachmentNotFound`]
+    /// or a save failure.
+    pub fn delete_attachment(&mut self, item_id: &str, attachment_id: &str) -> CommandResult<()> {
+        let vault = self.vault_mut()?;
+        vault.remove_attachment(parse_item_id(item_id)?, parse_attachment_id(attachment_id)?)?;
+        vault.save()?;
+        Ok(())
+    }
+
     fn vault(&self) -> CommandResult<&Vault> {
         self.vault.as_ref().ok_or(CommandError::Locked)
     }
@@ -358,6 +471,15 @@ impl core::fmt::Debug for Session {
         f.debug_struct("Session")
             .field("unlocked", &self.is_unlocked())
             .finish_non_exhaustive()
+    }
+}
+
+/// Maps an attachment transfer error: I/O failures there concern the
+/// user's file or the attachment data, not the vault file.
+fn file_error(error: VaultError) -> CommandError {
+    match error {
+        VaultError::Io(_) => CommandError::FileAccess,
+        other => other.into(),
     }
 }
 
@@ -939,6 +1061,156 @@ mod tests {
             reloaded.settings().auto_lock_timeout(),
             Duration::from_secs(60)
         );
+    }
+
+    fn keep_going(_: u64) -> ControlFlow<()> {
+        ControlFlow::Continue(())
+    }
+
+    /// Writes `contents` to a file named `name` in `dir` and returns its path.
+    fn user_file(dir: &TempDir, name: &str, contents: &[u8]) -> PathBuf {
+        let path = dir.path().join(name);
+        fs::write(&path, contents).unwrap();
+        path
+    }
+
+    #[test]
+    fn attachments_are_added_exported_and_deleted() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        session.create(&s(PASSWORD)).unwrap();
+        let id = session.create_item(note("Taxes", "")).unwrap();
+        let data: Vec<u8> = (0..200_000u32).map(|n| (n % 251) as u8).collect();
+        let source = user_file(&dir, "return 2026.pdf", &data);
+
+        let mut reported = 0;
+        let added = session
+            .add_attachment(&id, &source, |done| {
+                reported = done;
+                ControlFlow::Continue(())
+            })
+            .unwrap();
+        assert_eq!(reported, data.len() as u64);
+        let json = serde_json::to_value(&added).unwrap();
+        assert_eq!(json["name"], "return 2026.pdf");
+        assert_eq!(json["size"], data.len());
+        let attachment_id = json["id"].as_str().unwrap().to_owned();
+
+        // Persisted: visible after locking and unlocking again.
+        session.lock();
+        session.unlock(&with_password(PASSWORD)).unwrap();
+        let details = serde_json::to_value(session.get_item(&id).unwrap()).unwrap();
+        assert_eq!(details["attachments"][0]["id"], attachment_id.as_str());
+        assert_eq!(
+            session.attachment_info(&id, &attachment_id).unwrap(),
+            ("return 2026.pdf".to_owned(), data.len() as u64)
+        );
+
+        let destination = dir.path().join("exported.pdf");
+        session
+            .export_attachment(&id, &attachment_id, &destination, keep_going)
+            .unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), data);
+
+        session.delete_attachment(&id, &attachment_id).unwrap();
+        assert_eq!(
+            session.delete_attachment(&id, &attachment_id),
+            Err(CommandError::AttachmentNotFound)
+        );
+        session.lock();
+        session.unlock(&with_password(PASSWORD)).unwrap();
+        let details = serde_json::to_value(session.get_item(&id).unwrap()).unwrap();
+        assert_eq!(details["attachments"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn deleting_an_item_deletes_its_attachment_data() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        session.create(&s(PASSWORD)).unwrap();
+        let id = session.create_item(note("x", "")).unwrap();
+        let source = user_file(&dir, "a.txt", b"secret file");
+        session.add_attachment(&id, &source, keep_going).unwrap();
+        let blobs = dir.path().join("data").join("vault.nvault.attachments");
+        assert_eq!(fs::read_dir(&blobs).unwrap().count(), 1);
+        session.delete_item(&id).unwrap();
+        assert_eq!(fs::read_dir(&blobs).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn attachment_commands_report_their_errors() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        session.create(&s(PASSWORD)).unwrap();
+        let id = session.create_item(note("x", "")).unwrap();
+        let source = user_file(&dir, "a.txt", b"data");
+        let missing_item = "00".repeat(16);
+        let missing_attachment = "11".repeat(16);
+
+        assert_eq!(session.check_item(&id), Ok(()));
+        assert_eq!(
+            session.check_item(&missing_item),
+            Err(CommandError::ItemNotFound)
+        );
+        assert_eq!(
+            session
+                .add_attachment(&id, &dir.path().join("absent.txt"), keep_going)
+                .err(),
+            Some(CommandError::FileAccess)
+        );
+        assert_eq!(
+            session.attachment_info(&id, &missing_attachment).err(),
+            Some(CommandError::AttachmentNotFound)
+        );
+        assert_eq!(
+            session.attachment_info(&id, "bad").err(),
+            Some(CommandError::InvalidInput)
+        );
+        let cancelled = session.add_attachment(&id, &source, |_| ControlFlow::Break(()));
+        assert_eq!(cancelled.err(), Some(CommandError::Cancelled));
+
+        // Exporting over the vault itself is refused.
+        let added = session.add_attachment(&id, &source, keep_going).unwrap();
+        let vault_path = dir.path().join("data").join("vault.nvault");
+        let before = fs::read(&vault_path).unwrap();
+        assert_eq!(
+            session.export_attachment(&id, &added.id, &vault_path, keep_going),
+            Err(CommandError::FileAccess)
+        );
+        assert_eq!(fs::read(&vault_path).unwrap(), before);
+
+        session.lock();
+        assert_eq!(session.check_item(&id), Err(CommandError::Locked));
+        assert_eq!(
+            session.add_attachment(&id, &source, keep_going).err(),
+            Some(CommandError::Locked)
+        );
+        assert_eq!(
+            session.export_attachment(&id, &added.id, &dir.path().join("out"), keep_going),
+            Err(CommandError::Locked)
+        );
+        assert_eq!(
+            session.delete_attachment(&id, &added.id),
+            Err(CommandError::Locked)
+        );
+    }
+
+    #[test]
+    fn attachment_dtos_never_contain_paths() {
+        let dir = TempDir::new();
+        let mut session = session(&dir);
+        session.create(&s(PASSWORD)).unwrap();
+        let id = session.create_item(note("x", "")).unwrap();
+        let source = user_file(&dir, "a.txt", b"data");
+        let added =
+            serde_json::to_string(&session.add_attachment(&id, &source, keep_going).unwrap())
+                .unwrap();
+        let details = serde_json::to_string(&session.get_item(&id).unwrap()).unwrap();
+        let temp = dir.path().to_string_lossy().into_owned();
+        for json in [added, details] {
+            assert!(!json.contains(&temp), "{json}");
+            assert!(!json.contains("nvault"), "{json}");
+        }
     }
 
     #[test]

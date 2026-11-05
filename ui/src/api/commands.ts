@@ -6,10 +6,11 @@
  * straight to Rust; the UI never receives key material, only the recovery
  * code at the two moments it must be shown.
  */
-import { invoke, type InvokeArgs } from '@tauri-apps/api/core';
+import { Channel, invoke, type InvokeArgs } from '@tauri-apps/api/core';
 
 import { toCommandError, type CommandError } from './errors';
 import type {
+  Attachment,
   CopyResult,
   Credential,
   ItemField,
@@ -21,6 +22,7 @@ import type {
   RevealedValue,
   SecretItemField,
   Settings,
+  TransferProgress,
   VaultStatus,
 } from './types';
 
@@ -41,7 +43,10 @@ export type CommandName =
   | 'copy_item_field'
   | 'create_item'
   | 'update_item'
-  | 'delete_item';
+  | 'delete_item'
+  | 'add_attachment'
+  | 'export_attachment'
+  | 'delete_attachment';
 
 async function call<T>(command: CommandName, args?: InvokeArgs): Promise<T> {
   try {
@@ -165,4 +170,43 @@ export function updateItem(id: string, item: ItemUpdate): Promise<void> {
 /** Deletes an item. */
 export function deleteItem(id: string): Promise<void> {
   return call('delete_item', { id });
+}
+
+/**
+ * Lets the user pick a file in a native dialog, shown by the shell, and
+ * attaches it to an item. The UI never sees the file's path or contents.
+ *
+ * @param itemId - The item to attach the file to.
+ * @param onProgress - Called with the encryption progress while it runs.
+ * @returns The new attachment, or `null` if the user closed the dialog.
+ */
+export function addAttachment(
+  itemId: string,
+  onProgress: (progress: TransferProgress) => void,
+): Promise<Attachment | null> {
+  return call('add_attachment', { itemId, onProgress: new Channel(onProgress) });
+}
+
+/**
+ * Lets the user choose where to save an attachment in a native dialog,
+ * shown by the shell, and decrypts it there.
+ *
+ * @param onProgress - Called with the decryption progress while it runs.
+ * @returns `false` if the user closed the dialog.
+ */
+export function exportAttachment(
+  itemId: string,
+  attachmentId: string,
+  onProgress: (progress: TransferProgress) => void,
+): Promise<boolean> {
+  return call('export_attachment', {
+    itemId,
+    attachmentId,
+    onProgress: new Channel(onProgress),
+  });
+}
+
+/** Removes an attachment from an item and deletes its encrypted data. */
+export function deleteAttachment(itemId: string, attachmentId: string): Promise<void> {
+  return call('delete_attachment', { itemId, attachmentId });
 }

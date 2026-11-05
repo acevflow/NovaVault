@@ -24,6 +24,7 @@ function setUp() {
         hasNotes: false,
         createdAtMs: 0,
         updatedAtMs: Date.UTC(2026, 0, 2),
+        attachments: [],
       },
     ],
   ]);
@@ -49,6 +50,7 @@ function setUp() {
         hasBody: input.body !== '',
         createdAtMs: 0,
         updatedAtMs: 0,
+        attachments: [],
       });
       return NEW_ID;
     },

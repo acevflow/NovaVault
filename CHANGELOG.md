@@ -74,8 +74,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy to clipboard with automatic clearing, handled in Rust: `copy_item_field` reads the field and copies it from the shell, so the value never reaches the UI. The clipboard is cleared after a configurable delay, when the vault locks (manually or automatically) and when the app exits, but only if it still holds the copied value. Clipboard history and cloud sync are asked to skip copied values (Windows history and cloud formats, macOS `org.nspasteboard.ConcealedType`, Linux `x-kde-passwordManagerHint`). Copy buttons for every field on the item details, with a polite status announcing when the clipboard clears.
 - Clipboard clear delay setting: `set_clipboard_clear_delay` command (5 to 300 seconds, default 30; requires an unlocked vault), stored in `settings.json` (older files without it still load), and a Clipboard section in Settings (10 seconds, 30 seconds, 1 minute or 2 minutes).
 - `clipboard_unavailable` error code.
+- Encrypted file attachments in `novavault-core`: each file is encrypted as a stream into its own blob next to the vault file (`<vault>.attachments/`), in 64 KiB XChaCha20-Poly1305 chunks whose associated data binds the vault, the attachment, the chunk index and a final-chunk flag, so reordering, dropping, duplicating or truncating chunks and swapping blobs are detected. Only one chunk is held in memory. Exports are written to a temporary file and moved into place only after the whole file has authenticated. Blobs of removed attachments are deleted after the vault is saved, and unreferenced blobs are cleaned up on open. Tests cover large files, every chunk boundary, truncation and tampering.
+- Vault format version 1: item payloads list their attachments (identifier, size, time added, name). Version 0 vaults are migrated when unlocked, with a backup kept until the new file is verified.
+- `add_attachment`, `export_attachment` and `delete_attachment` commands. Native open and save dialogs are shown by the shell (`tauri-plugin-dialog`), so the UI never sends or receives a file path; transfers report progress over an IPC channel. `get_item` returns attachment metadata. New error codes `attachment_not_found`, `file_access` and `cancelled`.
+- Attachments on the item details screen: list with size and date, attach a file, export it, or remove it after confirmation, with a progress bar during transfers.
 
 ### Changed
+
+- Key slots authenticate the vault header with its version field zeroed, so format migrations never need to rewrap a slot; the version stays authenticated by the records and the integrity seal.
+- Locking the vault manually or on suspend or screen lock stops a running attachment transfer at its next chunk instead of waiting for it.
+- The `corrupted` error message no longer refers only to the vault file, since it also covers damaged attachments.
+- Vault format specification updated to format version 1 with the attachment storage, blob layout, chunk encryption, reader rules, lifecycle and migration from version 0, plus new test vectors. The architecture document, threat model, documentation index and README status describe attachments.
 
 - Architecture document describes the item commands, the read, reveal and copy data flow, the clipboard worker, the items UI and the `arboard` dependency; the threat model records clipboard exposure and per-field reveal; the development guide lists the new UI folders; README status ticks item management and clipboard auto-clear.
 

@@ -1,8 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the main window: only the NovaVault vault commands. No core plugin permissions (no events, file system, shell or HTTP). Grant anything else only when a feature needs it, and justify it in the PR.",
-  "windows": ["main"],
+  "description": "Permissions for the main window: only the NovaVault vault commands. No core or plugin permissions (no events, file system, dialog, shell or HTTP): file dialogs are opened by Rust commands, never by the webview. Grant anything else only when a feature needs it, and justify it in the PR.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "allow-vault-status",
     "allow-create-vault",
@@ -19,6 +21,9 @@
     "allow-copy-item-field",
     "allow-create-item",
     "allow-update-item",
-    "allow-delete-item"
+    "allow-delete-item",
+    "allow-add-attachment",
+    "allow-export-attachment",
+    "allow-delete-attachment"
   ]
 }

@@ -5,11 +5,12 @@
 //! screen needs: item listings have no secret fields at all, and the
 //! recovery code is serialized only in the two responses that must show it
 //! once. No type here derives `Debug`, so contents cannot end up in logs.
+//! No output ever contains a file system path: attachments are described by
+//! identifier, name and size only.
 
-use novavault_core::item::ITEM_ID_LEN;
 use novavault_core::{
-    Item, ItemContent, ItemId, ItemKind, ItemSummary, NoteItem, PasswordItem, RecoveryCode,
-    SecretItem,
+    Attachment, AttachmentId, Item, ItemContent, ItemId, ItemKind, ItemSummary, NoteItem,
+    PasswordItem, RecoveryCode, SecretItem,
 };
 use secrecy::{ExposeSecret, SecretString};
 use serde::ser::{SerializeStruct, Serializer};
@@ -257,7 +258,7 @@ impl ItemField {
 ///
 /// JSON example: `{ "id": "…", "kind": "password", "title": "Bank",
 /// "username": "alice", "url": "…", "hasPassword": true, "hasNotes": false,
-/// "createdAtMs": 0, "updatedAtMs": 0 }`.
+/// "createdAtMs": 0, "updatedAtMs": 0, "attachments": [] }`.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemDetailsDto {
@@ -272,6 +273,8 @@ pub struct ItemDetailsDto {
     /// The kind-specific fields, with the `kind` tag.
     #[serde(flatten)]
     pub fields: ItemDetailFields,
+    /// The item's attachments, in the order they were added.
+    pub attachments: Vec<AttachmentDto>,
 }
 
 /// The kind-specific part of [`ItemDetailsDto`].
@@ -330,8 +333,50 @@ impl From<&Item> for ItemDetailsDto {
             created_at_ms: item.created_at_ms(),
             updated_at_ms: item.updated_at_ms(),
             fields,
+            attachments: item.attachments().iter().map(AttachmentDto::from).collect(),
         }
     }
+}
+
+/// One attachment of an item: identifier, file name, size and time added.
+///
+/// JSON example: `{ "id": "…", "name": "scan.pdf", "size": 1024,
+/// "addedAtMs": 0 }`.
+#[derive(Serialize, Zeroize, ZeroizeOnDrop)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentDto {
+    /// Attachment identifier, 32 lower-case hexadecimal digits.
+    #[zeroize(skip)]
+    pub id: String,
+    /// The original file name (wiped on drop: names can be revealing).
+    pub name: String,
+    /// Size in bytes.
+    pub size: u64,
+    /// When the file was attached, milliseconds since the Unix epoch (UTC).
+    pub added_at_ms: u64,
+}
+
+impl From<&Attachment> for AttachmentDto {
+    fn from(attachment: &Attachment) -> Self {
+        Self {
+            id: attachment.id().to_string(),
+            name: attachment.name().to_owned(),
+            size: attachment.size(),
+            added_at_ms: attachment.added_at_ms(),
+        }
+    }
+}
+
+/// Progress of an attachment transfer, sent over a channel while it runs.
+///
+/// JSON: `{ "done": 65536, "total": 1048576 }`.
+#[derive(Clone, Copy, Serialize)]
+pub struct TransferProgressDto {
+    /// Bytes encrypted or decrypted so far.
+    pub done: u64,
+    /// Bytes in total (for an added file, its size when the transfer
+    /// started).
+    pub total: u64,
 }
 
 impl Drop for ItemDetailsDto {
@@ -471,29 +516,17 @@ const fn kind_name(kind: ItemKind) -> &'static str {
 /// [`CommandError::InvalidInput`] if `text` is not exactly 32 hexadecimal
 /// digits.
 pub fn parse_item_id(text: &str) -> CommandResult<ItemId> {
-    let digits = text.as_bytes();
-    if digits.len() != 2 * ITEM_ID_LEN {
-        return Err(CommandError::InvalidInput);
-    }
-    let mut bytes = [0u8; ITEM_ID_LEN];
-    for (byte, pair) in bytes.iter_mut().zip(digits.chunks_exact(2)) {
-        // Strict digits only: `u8::from_str_radix` would accept a sign.
-        let (Some(high), Some(low)) = (hex_digit(pair[0]), hex_digit(pair[1])) else {
-            return Err(CommandError::InvalidInput);
-        };
-        *byte = high << 4 | low;
-    }
-    Ok(ItemId::from_bytes(bytes))
+    ItemId::from_hex(text).ok_or(CommandError::InvalidInput)
 }
 
-/// Value of one ASCII hexadecimal digit, in either case.
-const fn hex_digit(digit: u8) -> Option<u8> {
-    match digit {
-        b'0'..=b'9' => Some(digit - b'0'),
-        b'a'..=b'f' => Some(digit - b'a' + 10),
-        b'A'..=b'F' => Some(digit - b'A' + 10),
-        _ => None,
-    }
+/// Parses an attachment identifier sent by the UI (32 hexadecimal digits).
+///
+/// # Errors
+///
+/// [`CommandError::InvalidInput`] if `text` is not exactly 32 hexadecimal
+/// digits.
+pub fn parse_attachment_id(text: &str) -> CommandResult<AttachmentId> {
+    AttachmentId::from_hex(text).ok_or(CommandError::InvalidInput)
 }
 
 #[cfg(test)]
@@ -600,5 +633,17 @@ mod tests {
             parse_item_id(&"é".repeat(16)),
             Err(CommandError::InvalidInput)
         );
+        let attachment = AttachmentId::generate().unwrap();
+        assert_eq!(
+            parse_attachment_id(&attachment.to_string()).unwrap(),
+            attachment
+        );
+        assert_eq!(parse_attachment_id("x"), Err(CommandError::InvalidInput));
+    }
+
+    #[test]
+    fn transfer_progress_serializes_both_counts() {
+        let json = serde_json::to_value(TransferProgressDto { done: 1, total: 2 }).unwrap();
+        assert_eq!(json, serde_json::json!({ "done": 1, "total": 2 }));
     }
 }
