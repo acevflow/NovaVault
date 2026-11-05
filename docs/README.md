@@ -15,6 +15,7 @@ Design and contributor documentation for NovaVault. Start with the architecture,
 | [API reference](api-reference.md) | Every Tauri command the UI can call, with its arguments, return value and error codes. |
 | [Development guide](development.md) | Setup on Windows, macOS and Linux, commands and project layout. |
 | [Clipboard behaviour](clipboard.md) | How copy and auto-clear work, and what happens on Windows, macOS, X11 and Wayland. |
+| [Rust test report](testing/reports/rust.md) | Latest local run of `cargo fmt`, `clippy` and `cargo test`: environment, results per crate, failures and untested areas. |
 
 Algorithms and parameters are covered in [Architecture: Cryptography and dependencies](architecture.md#cryptography-and-dependencies); the justification for every cryptography-related crate is in [dependencies.md](dependencies.md).
 
