@@ -83,3 +83,65 @@ It can contain:
 The development and release builds use the **same** data directory, so they open the same vault.
 
 The theme preference (light, dark or system) is not in this directory: it is kept in the webview's local storage under the key `novavault.theme`.
+
+## 2. Preconditions and clean state
+
+### 2.1 Preconditions
+
+Before every run:
+
+- The app builds and starts on this machine (section 1).
+- You use a test OS account or a machine with no vault you care about. If a vault already exists, back it up first (section 2.3).
+- No other copy of NovaVault is running. Close every NovaVault window, and stop `npm run dev` with `Ctrl+C`.
+- You have something to write on (paper or a plain text file kept only for testing) to record the test master passwords and recovery codes. Never reuse them anywhere.
+
+Suggested test data:
+
+| Purpose | Value |
+| --- | --- |
+| Master password | `correct-horse-battery-staple-7` |
+| New master password (section 3.3) | `orbit-lantern-violet-canyon-42` |
+| Weak password | `password1` |
+| Accented title (search) | `Café Wi-Fi` |
+
+### 2.2 Reset to a fresh install
+
+A fresh install means the data directory does not exist, so the app opens on **Create your vault**.
+
+1. Quit NovaVault.
+2. Back up the data directory if it holds a vault you want to keep (section 2.3).
+3. Delete the data directory:
+
+   | OS | Command |
+   | --- | --- |
+   | Windows (PowerShell) | `Remove-Item -Recurse -Force "$env:APPDATA\io.github.acevflow.novavault"` |
+   | macOS | `rm -rf ~/Library/Application\ Support/io.github.acevflow.novavault` |
+   | Linux | `rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/io.github.acevflow.novavault"` |
+
+4. Optional: to also reset the theme preference, open **Settings** in the unlocked vault and choose **Match system** under **Appearance** before step 1. Deleting the data directory does not reset it.
+5. Start the app. **Expected:** the **Create your vault** screen.
+
+Deleting the data directory deletes the vault and every attachment for good. NovaVault keeps no other copy.
+
+### 2.3 Back up a test vault
+
+Use this to keep a vault in a known state (for example with sample items) and return to it between cases.
+
+1. Quit NovaVault, so no save is in progress.
+2. Copy the whole data directory (not only `vault.nvault`: attachments and settings live next to it) to a folder outside it, for example `nv-backup-<date>`:
+
+   | OS | Command |
+   | --- | --- |
+   | Windows (PowerShell) | `Copy-Item -Recurse "$env:APPDATA\io.github.acevflow.novavault" "$HOME\nv-backup"` |
+   | macOS | `cp -R ~/Library/Application\ Support/io.github.acevflow.novavault ~/nv-backup` |
+   | Linux | `cp -R "${XDG_DATA_HOME:-$HOME/.local/share}/io.github.acevflow.novavault" ~/nv-backup` |
+
+3. Write down the master password and recovery code that open this backup; they are part of its state.
+
+To restore, quit the app, delete the data directory (section 2.2, step 3), copy the backup back to the data directory path, and start the app. **Expected:** the **Unlock your vault** screen, and the recorded master password opens the vault.
+
+A backup taken before a master password change or recovery code regeneration still opens with the old secrets: restoring it undoes the change.
+
+### 2.4 Delete a test vault
+
+When a run is finished, delete the test vault with section 2.2, step 3, and delete any backups and notes of test secrets you made.
