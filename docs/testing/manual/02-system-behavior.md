@@ -243,3 +243,43 @@ How auto-lock works, so the expected results make sense:
 | B-AL-18 | Lock stops a running transfer | 1. Set the timeout to "1 hour". Select an item, select **Attach file** and pick `large.bin`.<br>2. While the progress bar moves, lock the screen (or select **Lock**).<br>3. Unlock the screen and the vault, and select the item.<br>4. Run this step after B-AT-05 has attached `large.bin`: repeat with **Export** of it, saving to a new `nv-export` folder. | The vault locks within a moment instead of waiting for the transfer to finish. Step 3: `large.bin` is not listed (or is listed only if the transfer had finished before the lock). Step 4: no file, complete or partial, is left at the export destination. | ☐ Pass ☐ Fail | |
 
 Set the timeout back to "5 minutes" before the next section.
+
+## 5. Attachments
+
+Start: unlocked test vault with a note `Attachment test` that has no attachments, the test files from section 2.3 in `nv-test`, and an empty `nv-export` folder next to it. Attachments are shown in the item's details, under **Attachments**.
+
+Encrypted attachment contents are stored in the folder `vault.nvault.attachments` next to the vault file, one file per attachment, named with 32 hexadecimal characters and the extension `.nvatt`. List them with:
+
+| OS | Command |
+| --- | --- |
+| Windows (PowerShell) | `Get-ChildItem "$VAULT.attachments" \| Select-Object Name, Length` |
+| macOS and Linux | `ls -l "$VAULT.attachments"` |
+
+Each encrypted file is larger than the original by 48 bytes plus 40 bytes per 64 KB chunk (at least one chunk):
+
+| Test file | Original size | Encrypted size | Size shown in the app |
+| --- | --- | --- | --- |
+| `empty.bin` | 0 | 88 | "0 bytes" |
+| `one.bin` | 1 | 89 | "1 byte" |
+| `chunk.bin` | 65 536 | 65 624 | "64 KB" |
+| `chunk-plus-one.bin` | 65 537 | 65 665 | "64 KB" |
+| `medium.bin` | 10 485 760 | 10 492 208 | "10 MB" |
+| `large.bin` | 1 073 741 824 | 1 074 397 232 | "1.0 GB" |
+
+| ID | Title | Steps | Expected result | Pass/Fail | Notes |
+| --- | --- | --- | --- | --- | --- |
+| B-AT-01 | No attachments yet | 1. Select `Attachment test`. | Under **Attachments**: "No files attached." and an **Attach file** button. The `vault.nvault.attachments` folder may not exist yet. | ☐ Pass ☐ Fail | |
+| B-AT-02 | Close the file dialog | 1. Select **Attach file**.<br>2. Close the dialog without choosing a file. | While the dialog is open the app shows "Attaching file" with "Choose a file in the dialog…". The dialog title is "Attach a file". After closing it, no message is shown and nothing is attached. | ☐ Pass ☐ Fail | |
+| B-AT-03 | Attach small files | 1. Attach `empty.bin`, then `one.bin`, `chunk.bin` and `chunk-plus-one.bin`, one at a time. | After each: "Attached “&lt;name&gt;”." The list shows the files in the order added, each with its name, the size from the table above and "added &lt;date and time&gt;", and **Export** and **Remove** buttons. | ☐ Pass ☐ Fail | |
+| B-AT-04 | Attach a file with accents in its name | 1. Attach `Café résumé.txt`. | "Attached “Café résumé.txt”." The name is shown exactly, accents and space included. | ☐ Pass ☐ Fail | |
+| B-AT-05 | Attach medium and large files | 1. Attach `medium.bin`.<br>2. Attach `large.bin` and watch the app until it finishes. | A progress bar appears with "&lt;percent&gt;% · &lt;done&gt; of &lt;total&gt;" (for example "37% · 379 MB of 1.0 GB") and advances to 100%. **Attach file**, **Export** and **Remove** are disabled until the transfer ends. Both files are then listed with "10 MB" and "1.0 GB". The app stays responsive and does not use memory in proportion to the file size (optional: watch it in Task Manager, Activity Monitor or `top`). | ☐ Pass ☐ Fail | |
+| B-AT-06 | Encrypted files on disk | 1. List the attachments folder (command above).<br>2. Open one `.nvatt` file of a text attachment, such as `Café résumé.txt`, in a text editor or with `Show-TestBytes`/`od`. | One `.nvatt` file per attachment (7 so far), with the encrypted sizes from the table above. File names are 32 hexadecimal characters and do not reveal the original names. Each file starts with `4e 56 41 54 54 43 48 00` (`NVATTCH`) and the original text is not readable anywhere in it. | ☐ Pass ☐ Fail | |
+| B-AT-07 | Export and compare checksums | 1. Select **Export** next to each attachment and save it to `nv-export`.<br>2. Compute the SHA-256 of every original in `nv-test` and its export in `nv-export` (section 2.2). | The dialog is titled "Export attachment" and suggests the original file name. While it is open the app shows "Exporting “&lt;name&gt;”" with "Choose where to save it in the dialog…", then a progress bar for large files, then "Exported “&lt;name&gt;”.". Every exported file has the same size and the same SHA-256 as its original, including `empty.bin` (0 bytes). | ☐ Pass ☐ Fail | |
+| B-AT-08 | Close the export dialog | 1. Select **Export** and close the dialog without saving. | No message is shown and no file is written. | ☐ Pass ☐ Fail | |
+| B-AT-09 | Replace an existing export | 1. Export `one.bin` to `nv-export` again, choosing the same name. | The OS asks whether to replace the existing file. Confirming replaces it; the checksum still matches the original. Declining writes nothing. | ☐ Pass ☐ Fail | |
+| B-AT-10 | Export onto the vault file is refused | 1. Compute the SHA-256 of `vault.nvault`.<br>2. Export any attachment, navigate to the data directory in the dialog (macOS: Cmd+Shift+G and type the path) and choose `vault.nvault` as the name. Confirm the replacement if asked.<br>3. Compute the SHA-256 again, then lock and unlock. | "The file could not be read or saved there. Check the file or choose another place." The vault file's checksum is unchanged and the vault unlocks normally. | ☐ Pass ☐ Fail | |
+| B-AT-11 | Attachments persist | 1. Quit and restart the app, unlock and select `Attachment test`.<br>2. Export `medium.bin` again and compare checksums. | All attachments are listed with the same names, sizes and dates, in the same order. The export matches the original. | ☐ Pass ☐ Fail | |
+| B-AT-12 | Remove asks for confirmation | 1. Select **Remove** next to `one.bin`.<br>2. Select **Cancel**.<br>3. Select **Remove** again and press Escape. | "Remove this attachment?" and "“one.bin” will be removed from this item and its encrypted copy deleted. This cannot be undone." with **Remove** and **Cancel**; focus starts on **Cancel**. Both times the question closes and `one.bin` is still listed. | ☐ Pass ☐ Fail | |
+| B-AT-13 | Remove an attachment | 1. Note the number of `.nvatt` files.<br>2. Select **Remove** next to `one.bin` and confirm with **Remove**.<br>3. List the attachments folder again.<br>4. Lock and unlock, then select the item. | "Removing…", then "Removed “one.bin”.", and it is gone from the list. The folder holds one `.nvatt` file fewer. It is still gone after unlocking. | ☐ Pass ☐ Fail | |
+| B-AT-14 | Deleting an item deletes its attachments | 1. Create a note `Throwaway`, attach `chunk.bin` and `medium.bin`, and note the number of `.nvatt` files.<br>2. Delete the note (**Delete**, then **Delete**).<br>3. List the attachments folder. | The note is deleted and the folder holds two `.nvatt` files fewer. The attachments of `Attachment test` still export correctly. | ☐ Pass ☐ Fail | |
+| B-AT-15 | A damaged attachment is detected | 1. Quit the app and back up the data directory (guide A, section 2.3).<br>2. Find the `.nvatt` file of `medium.bin` (the one of 10 492 208 bytes) and invert one byte in its middle: `Switch-TestByte "<path>" 5000000` (Windows) or `flip_byte "<path>" 5000000` (macOS and Linux).<br>3. Start, unlock and export `medium.bin` to `nv-export` under a new name.<br>4. Export `chunk.bin`.<br>5. Quit and restore the backup. | Step 3: "The vault data is damaged and cannot be read." and no file with the new name exists in `nv-export`, not even a partial one. Step 4: works and the checksum matches: one damaged attachment does not affect the others or the items. After step 5, `medium.bin` exports correctly again. | ☐ Pass ☐ Fail | |
