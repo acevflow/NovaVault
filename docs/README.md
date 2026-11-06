@@ -16,6 +16,7 @@ Design and contributor documentation for NovaVault. Start with the architecture,
 | [Development guide](development.md) | Setup on Windows, macOS and Linux, commands and project layout. |
 | [Clipboard behaviour](clipboard.md) | How copy and auto-clear work, and what happens on Windows, macOS, X11 and Wayland. |
 | [Rust test report](testing/reports/rust.md) | Latest local run of `cargo fmt`, `clippy` and `cargo test`: environment, results per crate, failures and untested areas. |
+| [Manual test guide A: setup and core flows](testing/manual/01-setup-and-core-flows.md) | Running the app per OS, vault location, clean-state procedure, and manual test cases for vault creation, unlock and lock, key slot changes and items. |
 
 Algorithms and parameters are covered in [Architecture: Cryptography and dependencies](architecture.md#cryptography-and-dependencies); the justification for every cryptography-related crate is in [dependencies.md](dependencies.md).
 
