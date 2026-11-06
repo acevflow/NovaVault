@@ -15,6 +15,8 @@ Design and contributor documentation for NovaVault. Start with the architecture,
 | [API reference](api-reference.md) | Every Tauri command the UI can call, with its arguments, return value and error codes. |
 | [Development guide](development.md) | Setup on Windows, macOS and Linux, commands and project layout. |
 | [Clipboard behaviour](clipboard.md) | How copy and auto-clear work, and what happens on Windows, macOS, X11 and Wayland. |
+| [Test report](testing/test-report.md) | Summary of the latest automated runs: overall status, results per suite, failures, bugs found and untested areas. |
+| [Manual test plan](testing/manual-test-plan.md) | How to run the manual test guides A to D, a results summary table to fill in, and a bug report template. |
 | [Rust test report](testing/reports/rust.md) | Latest local run of `cargo fmt`, `clippy` and `cargo test`: environment, results per crate, failures and untested areas. |
 | [Manual test guide A: setup and core flows](testing/manual/01-setup-and-core-flows.md) | Running the app per OS, vault location, clean-state procedure, and manual test cases for vault creation, unlock and lock, key slot changes and items. |
 

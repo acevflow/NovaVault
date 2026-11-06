@@ -69,6 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cargo workspace with shared lints (unsafe code denied; `unwrap()`/`expect()` denied outside tests).
 - Single full local check, `npm run check` (`scripts/check.mjs`), covering formatting, linting, typechecking, tests and builds for the UI and the Rust workspace.
 - App icons generated from a square emblem (`assets/icon.svg`).
+- Test report (`docs/testing/test-report.md`) summarising the Rust and UI test runs: overall status, results per suite, failures, bugs found and untested areas.
+- Manual test plan (`docs/testing/manual-test-plan.md`) linking manual test guides A to D, with a results summary table and a bug report template.
 
 ### Changed
 
