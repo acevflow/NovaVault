@@ -326,3 +326,81 @@ For the clipboard checks, install `wl-clipboard` (Wayland: `wl-paste`) or `xclip
 | C-LNX-12 | Forced XWayland on a Wayland session | Wayland session only.<br>1. Quit the app and start it from a terminal with `env -u WAYLAND_DISPLAY GDK_BACKEND=x11` in front of the command, so that both the window and the clipboard use XWayland.<br>2. Copy a password and paste it into a native Wayland app (for example GNOME Text Editor or Kate).<br>3. Stay in that app for 35 seconds and paste again; then focus NovaVault, return and paste again. | Step 2: the password is pasted. Step 3: record whether the second paste was empty or still the password; the third paste must be empty. This is the documented XWayland limitation ([Clipboard behaviour, Wayland](../../clipboard.md#wayland)). | ☐ Pass ☐ Fail | |
 | C-LNX-13 | Lock events | For each event, unlock first and copy a password:<br>1. `systemctl suspend`.<br>2. `loginctl lock-session`.<br>3. The desktop's lock shortcut (Super+L on GNOME, Meta+L on KDE) or its menu.<br>4. Let the screen saver start and lock the screen (set a short delay first). | After each event, NovaVault shows "Unlock your vault" and the clipboard is empty. Record the desktop, and any event that did not lock; then run B-AL-15 if logind or the screen-saver service is missing. | ☐ Pass ☐ Fail | |
 | C-LNX-14 | Fractional scaling | 1. Set the display scale to 100 %, then 125 % or 150 % if the desktop supports fractional scaling.<br>2. Use the app at each scale. | The layout is correct at every scale. Record whether text is sharp or blurry at fractional scales: on some Wayland desktops XWayland or WebKitGTK renders blurry text, which is a platform limitation. | ☐ Pass ☐ Fail | |
+
+## 5. Edge cases
+
+Start: an unlocked test vault (not the marker vault, whose values section 2 relies on), on **Vault**. Take a backup first (guide A, section 2.3): some cases add very large items.
+
+### 5.1 Generating long text
+
+Typing thousands of characters by hand is impractical. These commands put a string of a given length on the clipboard, ready to paste into a field. Each `x` is one byte.
+
+| OS | 10 000 characters | 1 000 000 characters |
+| --- | --- | --- |
+| Windows (PowerShell) | `Set-Clipboard ('x' * 10000)` | `Set-Clipboard ('x' * 1000000)` |
+| macOS | `head -c 10000 /dev/zero \| tr '\0' x \| pbcopy` | `head -c 1000000 /dev/zero \| tr '\0' x \| pbcopy` |
+| Linux (Wayland) | `head -c 10000 /dev/zero \| tr '\0' x \| wl-copy` | `head -c 1000000 /dev/zero \| tr '\0' x \| wl-copy` |
+| Linux (X11) | `head -c 10000 /dev/zero \| tr '\0' x \| xclip -selection clipboard` | `head -c 1000000 /dev/zero \| tr '\0' x \| xclip -selection clipboard` |
+
+Change the number for other lengths. An item, including its title, all its fields and the names of its attachments, can hold at most about 1 MiB (1 048 576 bytes) once encoded. The limit is in bytes of UTF-8, so a non-Latin character takes 2 to 4 bytes of it.
+
+### 5.2 Empty fields
+
+| ID | Title | Steps | Expected result | Pass/Fail | Notes |
+| --- | --- | --- | --- | --- | --- |
+| C-ED-01 | Title of spaces only | 1. Select **New secret**, type three spaces in **Title**, and select **Save**. | "Enter a title." Nothing is added. A title is required and spaces alone do not count. | ☐ Pass ☐ Fail | |
+| C-ED-02 | Item with only a title | 1. Select **New password**, type the title `Only a title`, leave every other field empty, and save.<br>2. Repeat with **New note** and **New secret**. | "Item added." each time. Every empty field shows "Empty", with no **Reveal** or **Copy** button. | ☐ Pass ☐ Fail | |
+| C-ED-03 | Title with surrounding spaces | 1. Create a note titled `  Spaced title  ` (two spaces before and after).<br>2. Search for `spaced title`. | The item is saved and found by the search. Record whether the list shows the spaces; the title is stored as typed. | ☐ Pass ☐ Fail | |
+| C-ED-04 | Empty and blank search | 1. Type only spaces in **Search by title**.<br>2. Clear the field. | Both times, every item is listed and the count shows the total. | ☐ Pass ☐ Fail | |
+| C-ED-05 | Blank secrets on the unlock screen | 1. Lock. On **Master password**, type three spaces and select **Unlock**.<br>2. On **Recovery code**, type `- - -` and select **Unlock**. | Step 1: after the usual delay, "That master password is not correct.": spaces are a password like any other. Step 2: at once, "That recovery code is not valid. Check it for typos: it has 8 groups of 4 characters." | ☐ Pass ☐ Fail | |
+| C-ED-06 | Clearing a field while editing | 1. Edit an item with a username and a website; delete both and save. | "Changes saved." **Username** and **Website** show "Empty" and have no **Copy** button. | ☐ Pass ☐ Fail | |
+
+### 5.3 Very long text
+
+| ID | Title | Steps | Expected result | Pass/Fail | Notes |
+| --- | --- | --- | --- | --- | --- |
+| C-ED-07 | Very long title | 1. Put 10 000 characters on the clipboard (section 5.1).<br>2. Create a note, paste them into **Title**, type `Long` in **Text**, and save.<br>3. Look at the list, the details and the edit form, at full and at minimum width. | "Item added." In the list the title is on one line, cut off with an ellipsis, and the item's type is still visible. In the details the title wraps inside the window; there is no horizontal scroll bar. The app stays responsive. | ☐ Pass ☐ Fail | |
+| C-ED-08 | Long value without spaces | 1. Put 10 000 characters on the clipboard.<br>2. Create a password item titled `Long values`, paste them into **Username**, **Website** and **Password**, and save.<br>3. Reveal **Password**; copy it and paste it into a text editor. | The username and website wrap inside the details; the revealed password wraps too. The pasted password has exactly 10 000 characters. | ☐ Pass ☐ Fail | |
+| C-ED-09 | Large note within the limit | 1. Put 1 000 000 characters on the clipboard.<br>2. Create a note titled `Large note`, paste them into **Text**, and save.<br>3. Reveal **Text**, then lock and unlock and open the item. | Step 2: "Item added.", perhaps after a short delay. Step 3: the text is shown in full and the app stays usable; scrolling may be slow. Record how long saving and revealing took. | ☐ Pass ☐ Fail | |
+| C-ED-10 | Item over the size limit | 1. Put 1 100 000 characters on the clipboard.<br>2. Create a note titled `Too large`, paste them into **Text**, and save. | "The item could not be saved. It may be too large." The form stays open with what you typed; nothing is added. Cancelling returns to the vault, which still works normally. | ☐ Pass ☐ Fail | |
+| C-ED-11 | Limit counts bytes, not characters | 1. Put 400 000 copies of a 3-byte character on the clipboard. Windows: `Set-Clipboard (([string][char]0x65E5) * 400000)`; macOS and Linux: `printf '日%.0s' $(seq 400000) \| pbcopy` (or `wl-copy`, or `xclip -selection clipboard`).<br>2. Create a note, paste into **Text**, and save. | "The item could not be saved. It may be too large.": 400 000 characters take about 1.2 MB in UTF-8. With 300 000 copies (about 900 KB) the note is saved. | ☐ Pass ☐ Fail | |
+| C-ED-12 | Editing an item past the limit | 1. Edit `Large note` from C-ED-09, select **Reveal current text**, add 100 000 more characters at the end, and save. | "The item could not be saved. It may be too large." After cancelling, `Large note` still has its original text. | ☐ Pass ☐ Fail | |
+| C-ED-13 | Long attachment name | 1. In `nv-test`, create a file whose name has 200 characters, for example 196 `a` and `.txt`. Windows: `New-Item -ItemType File ("$HOME\nv-test\" + ('a' * 196) + '.txt')`; macOS and Linux: `touch ~/nv-test/$(printf 'a%.0s' $(seq 196)).txt`.<br>2. Attach it to an item, then export it. | "Attached “aaaa…a.txt”." The name wraps inside the attachment list without pushing **Export** and **Remove** out of view. The export dialog suggests the full name. | ☐ Pass ☐ Fail | |
+| C-ED-14 | Attachment name over 255 bytes | Windows only (most Linux and macOS file systems refuse such names).<br>1. Create a file whose name has 130 copies of a 3-byte character: `New-Item -ItemType File ("$HOME\nv-test\" + (([string][char]0x65E5) * 130) + '.txt')`. Its name is 134 characters but 394 bytes in UTF-8.<br>2. Attach it to an item. | "The item could not be saved. It may be too large." Nothing is attached, the item is unchanged, and no new `.nvatt` file remains in `vault.nvault.attachments`. | ☐ Pass ☐ Fail | |
+
+### 5.4 Unicode and emoji
+
+Use these sample strings. Copy them from this document rather than typing them, so that they are exact.
+
+| Name | Text |
+| --- | --- |
+| Mixed scripts | `Ünïcødé 日本語 Привет Ελληνικά` |
+| Emoji | `🔐 Vault 👍🏽 👨‍👩‍👧 🇪🇸` (includes a skin tone, a family joined with zero-width joiners, and a flag) |
+| Right to left | `שלום مرحبا 123` |
+| Combining accent | `Cafe` followed by U+0301 COMBINING ACUTE ACCENT (looks like `Café`). Windows: `Set-Clipboard ("Cafe" + [char]0x0301)`; macOS and Linux: `printf 'Cafe\xcc\x81' \| pbcopy` (or `wl-copy`, or `xclip -selection clipboard`). |
+
+| ID | Title | Steps | Expected result | Pass/Fail | Notes |
+| --- | --- | --- | --- | --- | --- |
+| C-ED-15 | Unicode in every field | 1. Create a password item titled with the mixed-scripts text, with the emoji text as **Username**, the right-to-left text as **Password**, and all three on separate lines in **Notes**.<br>2. Reveal every field; copy each one and paste it into a text editor. | Every value is shown exactly as entered, including the family emoji as a single symbol and the flag. Pasted values are identical to the originals. The right-to-left text reads right to left; record how it is aligned. | ☐ Pass ☐ Fail | |
+| C-ED-16 | Unicode survives a restart | 1. Quit and restart the app, unlock, and open the item from C-ED-15. | Every field reveals the same text as before. | ☐ Pass ☐ Fail | |
+| C-ED-17 | Search with Unicode | 1. Search for `日本`, then `привет`, then `unicød`, then `unicode`.<br>2. Create a note titled with the combining-accent text, then search for `cafe` and for `café` (typed with a precomposed `é`). | Step 1: `日本`, `привет` (ignoring case) and `unicød` (ignoring the accents on `Ü` and `ï`) find the item from C-ED-15. `unicode` does not: `ø` is a letter of its own, not an `o` with an accent. Step 2: both searches find the note. | ☐ Pass ☐ Fail | |
+| C-ED-18 | Emoji and accents in the master password | Run after a backup, on a fresh install (guide A, section 2.2).<br>1. Create a vault with the master password `Pässwörd-日本-🔐-orbit-lantern-violet`.<br>2. Lock and unlock with it, typed (or pasted) the same way.<br>3. Change the master password to `correct-horse-battery-staple-7` and back. | Every step succeeds. A password with non-Latin characters and emoji works like any other. Restore the backup afterwards. | ☐ Pass ☐ Fail | |
+| C-ED-19 | Unicode attachment name | 1. In `nv-test`, create a file named `📄 informe – ñandú.txt` (copy the name from this document).<br>2. Attach it, export it, and compare checksums (guide B, section 2.2). | "Attached “📄 informe – ñandú.txt”." The export dialog suggests the same name and the checksums match. | ☐ Pass ☐ Fail | |
+| C-ED-20 | Multi-line paste into a single-line field | 1. Copy two lines of text from a text editor.<br>2. Paste them into **Title** and into **Username** of a new password item and save. | The line break is removed or replaced by the webview (single-line fields cannot hold one); record which. The item is saved and displayed on one line. | ☐ Pass ☐ Fail | |
+
+### 5.5 Rapid repeated actions
+
+These cases check that a quick second action is ignored, or handled once, while the first one is still running. Buttons show what they are doing ("Saving…", "Unlocking…") and are disabled until it ends.
+
+| ID | Title | Steps | Expected result | Pass/Fail | Notes |
+| --- | --- | --- | --- | --- | --- |
+| C-ED-21 | Double-click Save | 1. Create a new note titled `Double save` and double-click **Save** as fast as you can.<br>2. Edit it, change the title to `Double save 2` and double-click **Save**. | Exactly one `Double save` item is created; the edit is saved once. No error message. | ☐ Pass ☐ Fail | |
+| C-ED-22 | Repeated unlock | 1. Lock. Type the master password and press Enter several times quickly, or double-click **Unlock**. | The button reads "Unlocking…" and is disabled; the vault unlocks once, with no error. | ☐ Pass ☐ Fail | |
+| C-ED-23 | Repeated lock | 1. Double-click **Lock**.<br>2. Unlock, and immediately select **Lock** again. | The vault locks once and shows "Unlock your vault", with no error and no reload loop. | ☐ Pass ☐ Fail | |
+| C-ED-24 | Repeated copy | 1. Select **Copy** on a password ten times quickly, then paste.<br>2. Wait 35 seconds after the last click and paste again. | Step 1: the password, and "Copied. The clipboard clears in 30 seconds." Step 2: the clipboard is empty: the last copy sets the timer (as B-CB-09). | ☐ Pass ☐ Fail | |
+| C-ED-25 | Reveal and hide quickly | 1. Click **Reveal** and **Hide** on a field repeatedly and quickly, ending on **Hide**. | The field ends masked. Nothing else is revealed, and no error appears. | ☐ Pass ☐ Fail | |
+| C-ED-26 | Switching items quickly | 1. Click through several items in the list as fast as you can, or hold the Tab and Enter keys over the list.<br>2. Stop on one item. | The details always end up showing the last item selected: its title, fields and attachments, never those of an earlier one. | ☐ Pass ☐ Fail | |
+| C-ED-27 | Double-click Delete in the confirmation | 1. Delete an item and double-click the confirming **Delete**. | "Item deleted." once; no "That item no longer exists." error. | ☐ Pass ☐ Fail | |
+| C-ED-28 | Double-click Attach file | 1. Double-click **Attach file**. | Only one "Attach a file" dialog opens. While it is open, **Attach file**, **Export** and **Remove** are disabled. | ☐ Pass ☐ Fail | |
+| C-ED-29 | Repeated settings changes | 1. In **Settings**, switch the theme quickly between **Light**, **Dark** and **Match system** about ten times.<br>2. Change **Lock after inactivity**, double-click **Save**, and repeat with the clipboard setting. | Step 1: the app ends in the theme last chosen, and keeps it after a restart. Step 2: each setting is saved once, with its confirmation message, and `settings.json` holds the last values. Set them back to their defaults. | ☐ Pass ☐ Fail | |
+| C-ED-30 | Many items quickly | 1. Create 20 notes as fast as you can (**New note**, a title, Enter, repeat).<br>2. Lock, unlock and count the items. | Every note is created once; the count is right after unlocking. | ☐ Pass ☐ Fail | |
