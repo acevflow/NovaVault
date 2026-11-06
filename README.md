@@ -134,6 +134,13 @@ Project documentation lives in [`docs/`](docs/README.md):
 - [Development guide](docs/development.md): per-OS setup, commands, project layout and troubleshooting.
 - [Clipboard behaviour](docs/clipboard.md): how copy and auto-clear work on Windows, macOS, X11 and Wayland.
 
+### Testing
+
+`npm run check` runs the full local check: formatting, linting, type checking, tests and builds for the UI and the Rust workspace. CI runs the same checks on Windows, macOS and Linux.
+
+- [Test report](docs/testing/test-report.md): results of the latest automated runs, failures, bugs found and untested areas.
+- [Manual test plan](docs/testing/manual-test-plan.md): the manual test guides, a results table to fill in and a bug report template.
+
 ### Code reference
 
 Every hand-written source file and significant configuration file has its own reference page under [`docs/code/`](docs/code/README.md), covering its purpose, public API with exact signatures, security notes, dependencies and tests. The [code reference index](docs/code/README.md) groups the pages by layer: core, Tauri shell, UI and configuration.
