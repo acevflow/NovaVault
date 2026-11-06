@@ -283,3 +283,58 @@ Each encrypted file is larger than the original by 48 bytes plus 40 bytes per 64
 | B-AT-13 | Remove an attachment | 1. Note the number of `.nvatt` files.<br>2. Select **Remove** next to `one.bin` and confirm with **Remove**.<br>3. List the attachments folder again.<br>4. Lock and unlock, then select the item. | "Removing…", then "Removed “one.bin”.", and it is gone from the list. The folder holds one `.nvatt` file fewer. It is still gone after unlocking. | ☐ Pass ☐ Fail | |
 | B-AT-14 | Deleting an item deletes its attachments | 1. Create a note `Throwaway`, attach `chunk.bin` and `medium.bin`, and note the number of `.nvatt` files.<br>2. Delete the note (**Delete**, then **Delete**).<br>3. List the attachments folder. | The note is deleted and the folder holds two `.nvatt` files fewer. The attachments of `Attachment test` still export correctly. | ☐ Pass ☐ Fail | |
 | B-AT-15 | A damaged attachment is detected | 1. Quit the app and back up the data directory (guide A, section 2.3).<br>2. Find the `.nvatt` file of `medium.bin` (the one of 10 492 208 bytes) and invert one byte in its middle: `Switch-TestByte "<path>" 5000000` (Windows) or `flip_byte "<path>" 5000000` (macOS and Linux).<br>3. Start, unlock and export `medium.bin` to `nv-export` under a new name.<br>4. Export `chunk.bin`.<br>5. Quit and restore the backup. | Step 3: "The vault data is damaged and cannot be read." and no file with the new name exists in `nv-export`, not even a partial one. Step 4: works and the checksum matches: one damaged attachment does not affect the others or the items. After step 5, `medium.bin` exports correctly again. | ☐ Pass ☐ Fail | |
+
+## 6. Persistence
+
+Start: the test vault from section 5, with items of each kind and some attachments, unlocked. Write down its master password and recovery code.
+
+### 6.1 Closing, reopening and copying
+
+| ID | Title | Steps | Expected result | Pass/Fail | Notes |
+| --- | --- | --- | --- | --- | --- |
+| B-PS-01 | Everything survives a restart | 1. Note the item titles, the attachments of `Attachment test` and both settings.<br>2. Quit the app and start it again. | The app opens on "Unlock your vault", never unlocked. After unlocking: the same items with the same field values, the same attachments (an export matches its original's checksum), and the same settings. | ☐ Pass ☐ Fail | |
+| B-PS-02 | No temporary files are left | 1. Make a few edits (add an item, attach and remove a file), then quit the app.<br>2. List the data directory and the attachments folder, including hidden files (`Get-ChildItem -Force` on Windows, `ls -la` on macOS and Linux). | No file ending in `.tmp` remains in either place: every save writes a temporary file and renames it over the target. Only `vault.nvault`, `vault.nvault.attachments` and `settings.json` are in the data directory. | ☐ Pass ☐ Fail | |
+| B-PS-03 | A copy elsewhere is not used | 1. Quit the app and copy `vault.nvault` to `nv-test` as `vault-copy.nvault`. Compute its SHA-256.<br>2. Start the app, unlock, add an item `After copy`, and quit.<br>3. Compute the copy's SHA-256 again. | The copy is unchanged: the app only ever opens `vault.nvault` in the data directory and never asks for a path. | ☐ Pass ☐ Fail | |
+| B-PS-04 | Restore a full copy | 1. Quit the app. Copy the whole data directory to `nv-test/data-copy`.<br>2. Delete the data directory (guide A, section 2.2, step 3) and start the app.<br>3. Quit, copy `data-copy` back to the data directory path, and start the app. | Step 2: "Create your vault". Step 3: "Unlock your vault"; the master password and the recovery code both unlock it, every item is there, and every attachment exports with a matching checksum. | ☐ Pass ☐ Fail | |
+| B-PS-05 | Open the vault on another account or computer | Optional: needs a second OS account, or a second computer with NovaVault built from the same commit (any of the three OSes).<br>1. Copy the whole data directory to the same location on the other account or computer.<br>2. Start NovaVault there and unlock. | The vault unlocks with the same master password and recovery code. Items and attachments are identical (compare an export's checksum). The format does not depend on the OS or the account. Record the source and target OS. | ☐ Pass ☐ Fail | |
+| B-PS-06 | Vault file copied without its attachments folder | 1. Quit the app and back up the data directory.<br>2. Rename `vault.nvault.attachments` to `attachments-moved` (as if only `vault.nvault` had been copied).<br>3. Start, unlock and select `Attachment test`.<br>4. Export `chunk.bin`.<br>5. Quit and restore the backup. | Step 3: the items and the attachment list (names, sizes, dates) are all shown, since they are stored in the vault file. Step 4: "The vault data is damaged and cannot be read." and no file is written. After step 5 the export works again. Backups must include the attachments folder. | ☐ Pass ☐ Fail | |
+| B-PS-07 | An older copy is accepted (rollback) | 1. Quit and back up the data directory as `backup-old`.<br>2. Start, unlock, add an item `Newer item`, and quit.<br>3. Restore `backup-old` and start the app. | The restored vault unlocks without any warning and `Newer item` is missing. Replacing the whole vault with an older valid copy is not detected; this is a documented limitation (see the [threat model](../../threat-model.md#cryptography-and-key-management)). | ☐ Pass ☐ Fail | |
+| B-PS-08 | Stray files in the attachments folder | 1. Quit the app.<br>2. In the attachments folder, create a file named `0123456789abcdef0123456789abcdef.nvatt` with any content, and a file named `readme.txt`.<br>3. Start the app, unlock, and list the folder. | The `.nvatt` file that no item refers to has been deleted when the vault was unlocked. `readme.txt` is still there: files that do not look like attachments are ignored. All real attachments still export. Delete `readme.txt` afterwards. | ☐ Pass ☐ Fail | |
+
+### 6.2 Damaged files and unknown versions
+
+Each case below damages `vault.nvault` on purpose. Before starting:
+
+1. Quit the app.
+2. Back up the data directory (guide A, section 2.3) and keep that backup until the end of the section. Do not use it for anything else.
+3. Set `$VAULT` (section 2.1) and paste the helper functions (section 2.4).
+
+For **each** case:
+
+1. Make sure the app is closed and that `vault.nvault` is the original (restore the backup if needed).
+2. Apply the change in the **Change** column.
+3. Compute the SHA-256 of `vault.nvault` (section 2.2).
+4. Start the app and try to unlock with the credential named in the expected result: the master password, and where stated the recovery code too.
+5. Quit the app and compute the SHA-256 again. **Expected for every case:** it is unchanged: NovaVault never rewrites or "repairs" a file it cannot open.
+6. Restore the backup.
+
+Throughout, "damaged" means the message "The vault data is damaged and cannot be read." and "not supported" means "The vault file is not supported by this version of NovaVault. You may need a newer version." After any failed attempt the vault stays locked, the field is emptied and the app stays on "Unlock your vault"; it offers no way to create a new vault over the existing file.
+
+"At once" means the message appears without the usual one-second key derivation delay: the file is rejected by its structure before any key is derived.
+
+| ID | Title | Change | Expected result | Pass/Fail | Notes |
+| --- | --- | --- | --- | --- | --- |
+| B-PS-09 | Integrity seal damaged | Invert the last byte.<br>Windows: `Switch-TestByte $VAULT -1`<br>macOS/Linux: `flip_byte "$VAULT" $(( $(wc -c < "$VAULT") - 1 ))` | Master password: "damaged", after the usual delay. Recovery code: the same. | ☐ Pass ☐ Fail | |
+| B-PS-10 | Item data damaged | Invert byte 300, inside the first item (the vault must hold at least one item).<br>Windows: `Switch-TestByte $VAULT 300`<br>macOS/Linux: `flip_byte "$VAULT" 300` | Master password: "damaged", after the usual delay. No item is shown. | ☐ Pass ☐ Fail | |
+| B-PS-11 | Password key slot damaged | Invert byte 90, inside the master password slot.<br>Windows: `Switch-TestByte $VAULT 90`<br>macOS/Linux: `flip_byte "$VAULT" 90` | Master password: "That master password is not correct." (a damaged slot cannot be told apart from a wrong password). Recovery code: "damaged", because the integrity seal covers both slots. | ☐ Pass ☐ Fail | |
+| B-PS-12 | Recovery key slot damaged | Invert byte 190, inside the recovery code slot.<br>Windows: `Switch-TestByte $VAULT 190`<br>macOS/Linux: `flip_byte "$VAULT" 190` | Recovery code: "That recovery code is not correct. It may have been replaced by a newer one." Master password: "damaged". | ☐ Pass ☐ Fail | |
+| B-PS-13 | Last byte cut off | Windows: `Set-TestLength $VAULT ((Get-Item $VAULT).Length - 1)`<br>macOS/Linux: `cut_to "$VAULT" $(( $(wc -c < "$VAULT") - 1 ))` | Master password: "damaged", at once. | ☐ Pass ☐ Fail | |
+| B-PS-14 | Extra byte appended | Windows: `Set-TestLength $VAULT ((Get-Item $VAULT).Length + 1)` (adds a zero byte)<br>macOS/Linux: `printf '\0' >> "$VAULT"` | Master password: "damaged", at once. | ☐ Pass ☐ Fail | |
+| B-PS-15 | Cut to half its size | Windows: `Set-TestLength $VAULT ([long]((Get-Item $VAULT).Length / 2))`<br>macOS/Linux: `cut_to "$VAULT" $(( $(wc -c < "$VAULT") / 2 ))` | Master password: "damaged", at once. | ☐ Pass ☐ Fail | |
+| B-PS-16 | Cut inside the header | Keep only the first 20 bytes.<br>Windows: `Set-TestLength $VAULT 20`<br>macOS/Linux: `cut_to "$VAULT" 20` | Master password: "damaged", at once. | ☐ Pass ☐ Fail | |
+| B-PS-17 | Empty file | Windows: `Set-TestLength $VAULT 0`<br>macOS/Linux: `cut_to "$VAULT" 0` | The app still opens on "Unlock your vault" (a vault file exists). Master password: "not supported", at once. A file too short to carry the NovaVault signature is reported as not a vault file, which shares this message. | ☐ Pass ☐ Fail | |
+| B-PS-18 | Not a vault file | Replace the content with text.<br>Windows: `Set-Content -Encoding ascii $VAULT "hello"`<br>macOS/Linux: `echo hello > "$VAULT"`<br>Repeat with the original file and only byte 0 changed: `Switch-TestByte $VAULT 0` / `flip_byte "$VAULT" 0`. | Both times, master password: "not supported", at once. | ☐ Pass ☐ Fail | |
+| B-PS-19 | Newer format version | Set the version (bytes 8 and 9) to 2.<br>Windows: `Set-TestBytes $VAULT 8 ([byte[]](0x02, 0x00))`<br>macOS/Linux: `set_byte "$VAULT" 8 2; set_byte "$VAULT" 9 0`<br>Check with `Show-TestBytes $VAULT` / `od -A d -t x1 -N 16 "$VAULT"`: bytes 8 and 9 read `02 00`.<br>Repeat with `0xFF, 0xFF` / `255` and `255`. | Master password and recovery code: "not supported", at once, for both versions. A file written by a newer NovaVault is reported as such, not as damaged. | ☐ Pass ☐ Fail | |
+| B-PS-20 | Older version number on a current file | Set the version to 0.<br>Windows: `Set-TestBytes $VAULT 8 ([byte[]](0x00, 0x00))`<br>macOS/Linux: `set_byte "$VAULT" 8 0; set_byte "$VAULT" 9 0` | Master password: "damaged", after the usual delay. Version 0 is a supported version, so the file is read, but the changed header fails the integrity check. The file is not migrated or modified. | ☐ Pass ☐ Fail | |
+| B-PS-21 | Unknown encryption algorithm | Set byte 10 to 2.<br>Windows: `Set-TestBytes $VAULT 10 ([byte[]](0x02))`<br>macOS/Linux: `set_byte "$VAULT" 10 2` | Master password: "not supported", at once. | ☐ Pass ☐ Fail | |
+| B-PS-22 | Restoring the backup recovers the vault | After the last case, restore the backup and start the app. | The vault unlocks with the master password and with the recovery code, and all items and attachments are intact. | ☐ Pass ☐ Fail | |
